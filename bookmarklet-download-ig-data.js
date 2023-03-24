@@ -1,86 +1,124 @@
 javascript: (async () => {
-  async function getUserInfo(username = "") {
-    if (!username) throw new Error("Username is required");
-    try {
-      let followers = [{ username: "", full_name: "" }];
-      let followings = [{ username: "", full_name: "" }];
+  const SocialType = {
+    FOLLOWERS: "followers",
+    FOLLOWINGS: "followings",
+  };
 
-      followers = [];
-      followings = [];
+  async function getSocialChunk(user, socialObject, graph) {
+    let after = null;
+    let has_next = true;
+    let count = 0,
+      step = Math.min(socialObject.limit, 50);
+    if (
+      socialObject.type !== SocialType.FOLLOWERS &&
+      socialObject.type !== SocialType.FOLLOWINGS
+    ) {
+      throw new Error("Invalid social type");
+    }
+
+    while (has_next && count < socialObject.limit && step > 0) {
+      await fetch(
+        `https://www.instagram.com/graphql/query/?query_hash=${socialObject.fetchHash}&variables=` +
+          encodeURIComponent(
+            JSON.stringify({
+              id: user.pk,
+              include_reel: true,
+              fetch_mutual: true,
+              first: step,
+              after: after,
+            })
+          )
+      )
+        .then((res) => res.json())
+        .then((res) => {
+          count += step;
+          let username = user.username;
+          let results;
+
+          if (socialObject.type === SocialType.FOLLOWERS) {
+            ({ edge_followed_by: results } = res.data.user);
+          } else if (socialObject.type === SocialType.FOLLOWINGS) {
+            ({ edge_follow: results } = res.data.user);
+          }
+
+          has_next = results.page_info.has_next_page;
+          after = results.page_info.end_cursor;
+          graph.nodes = graph.nodes.concat(
+            results.edges
+              .filter(
+                ({ node }) =>
+                  graph.nodes.findIndex(
+                    (n) => n && n.id && n.id === node.username
+                  ) === -1
+              )
+              .map(({ node }) => {
+                return { id: node.username, group: 1 };
+              })
+          );
+          graph.links = graph.links.concat(
+            results.edges
+              .filter(
+                ({ node }) =>
+                  graph.links.findIndex(
+                    (n) => n && n.id && n.id === node.username
+                  ) === -1
+              )
+              .map(({ node }) => {
+                if (socialObject.type === SocialType.FOLLOWERS) {
+                  return {
+                    source: node.username,
+                    target: username,
+                    value: 1,
+                  };
+                } else if (socialObject.type === SocialType.FOLLOWINGS) {
+                  return {
+                    source: username,
+                    target: node.username,
+                    value: 1,
+                  };
+                }
+              })
+          );
+        });
+    }
+  }
+
+  async function getUserGraph(
+    username = "",
+    graph = { nodes: [], links: [] },
+    followerLimit = 100,
+    followingLimit = 100
+  ) {
+    if (!username) throw new Error("Username is required");
+    console.log(`Making graph for ${username}...`);
+
+    try {
+      let followers = {
+        type: SocialType.FOLLOWERS,
+        fetchHash: "c76146de99bb02f6415203be841dd25a",
+        limit: followerLimit,
+      };
+      let followings = {
+        type: SocialType.FOLLOWINGS,
+        fetchHash: "d04b0a864b4b54837c0d870b0e77e076",
+        limit: followingLimit,
+      };
+      if (!graph.nodes.find((n) => n && n.id && n.id === username)) {
+        graph.nodes.push({ id: username, group: 1 });
+      }
+
       const userQueryRes = await fetch(
         `https://www.instagram.com/web/search/topsearch/?query=${username}/`
       );
 
       const userQueryJson = await userQueryRes.json();
 
-      const userId = userQueryJson.users[0].user.pk;
+      const user = userQueryJson.users[0].user;
 
-      let after = null;
-      let has_next = true;
+      await getSocialChunk(user, followers, graph);
+      await getSocialChunk(user, followings, graph);
 
-      while (has_next) {
-        await fetch(
-          `https://www.instagram.com/graphql/query/?query_hash=c76146de99bb02f6415203be841dd25a&variables=` +
-            encodeURIComponent(
-              JSON.stringify({
-                id: userId,
-                include_reel: true,
-                fetch_mutual: true,
-                first: 50,
-                after: after,
-              })
-            )
-        )
-          .then((res) => res.json())
-          .then((res) => {
-            has_next = res.data.user.edge_followed_by.page_info.has_next_page;
-            after = res.data.user.edge_followed_by.page_info.end_cursor;
-            followers = followers.concat(
-              res.data.user.edge_followed_by.edges.map(({ node }) => {
-                return {
-                  username: node.username,
-                  full_name: node.full_name,
-                };
-              })
-            );
-          });
-      }
-
-      after = null;
-      has_next = true;
-
-      while (has_next) {
-        await fetch(
-          `https://www.instagram.com/graphql/query/?query_hash=d04b0a864b4b54837c0d870b0e77e076&variables=` +
-            encodeURIComponent(
-              JSON.stringify({
-                id: userId,
-                include_reel: true,
-                fetch_mutual: true,
-                first: 50,
-                after: after,
-              })
-            )
-        )
-          .then((res) => res.json())
-          .then((res) => {
-            has_next = res.data.user.edge_follow.page_info.has_next_page;
-            after = res.data.user.edge_follow.page_info.end_cursor;
-            followings = followings.concat(
-              res.data.user.edge_follow.edges.map(({ node }) => {
-                return {
-                  username: node.username,
-                  full_name: node.full_name,
-                };
-              })
-            );
-          });
-      }
-
-      return {
-        followers,
-        followings,
-      };
+      return graph;
     } catch (err) {
       console.log({ err });
     }
@@ -91,41 +129,17 @@ javascript: (async () => {
       `Getting user info for ${centralUsername}. This may take a 15-20 seconds...`
     );
 
-    const { followers, followings } = await getUserInfo(centralUsername);
-    console.log({ followers, followings });
-    const graph = {
-      nodes: [{ id: centralUsername, group: 1 }],
-      links: [],
-    };
-    followers.forEach((follower) => {
-      graph.nodes.push({ id: follower.username, group: 1 });
-      graph.links.push({
-        source: follower.username,
-        target: centralUsername,
-        value: 1,
-      });
-    });
-    followings.forEach((following) => {
-      graph.links.push({
-        source: centralUsername,
-        target: following.username,
-        value: 1,
-      });
+    const graph = await getUserGraph(
+      centralUsername,
+      {
+        nodes: [],
+        links: [],
+      },
+      100,
+      0
+    );
+    await Promise.all(graph.nodes.map((n) => getUserGraph(n.id, graph, 2, 2)));
 
-      const alreadyExists = graph.nodes.find(
-        (node) => node.id === following.username
-      );
-      if (alreadyExists) return;
-      graph.nodes.push({ id: following.username, group: 1 });
-    });
-
-    const graph1 = {
-      nodes: [
-        { id: centralUsername, group: 1 },
-        { id: "other", group: 1 },
-      ],
-      links: [{ source: centralUsername, target: "other", value: 1 }],
-    };
     return graph;
   }
 
@@ -142,6 +156,7 @@ javascript: (async () => {
     document.body.removeChild(a);
   }
 
-  const graph = await makeGraph("sebas.favaron");
+  const graph = await makeGraph(window._sharedData.config.viewer.username);
   downloadData(graph);
+  console.log("Done getting user info.");
 })();

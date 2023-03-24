@@ -9,12 +9,14 @@ export function drawGraph(graph) {
     .forceSimulation()
     .force(
       "link",
-      d3.forceLink().id(function (d) {
-        return d.id;
-      })
+      d3.forceLink().id((d) => d.id)
     )
     .force("charge", d3.forceManyBody().strength(-200))
-    .force("center", d3.forceCenter(width / 2, height / 2));
+    .force("center", d3.forceCenter(width / 2, height / 2))
+    .force(
+      "collide",
+      d3.forceCollide((d) => 10)
+    );
 
   var link = svg
     .append("g")
@@ -23,9 +25,8 @@ export function drawGraph(graph) {
     .data(graph.links)
     .enter()
     .append("line")
-    .attr("stroke-width", function (d) {
-      return Math.sqrt(d.value);
-    });
+    .attr("stroke-width", (d) => Math.sqrt(d.value))
+    .attr("stroke", (_) => 1);
 
   var node = svg
     .append("g")
