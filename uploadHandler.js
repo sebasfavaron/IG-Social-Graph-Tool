@@ -1,7 +1,8 @@
 import { drawGraph } from "./index.js";
 
-let form = document.querySelector("#upload");
 let file = document.querySelector("#file");
+let fileInputContainer = document.querySelector("#file-input-container");
+let boorkmarklet = document.querySelector("#boorkmarklet");
 
 /**
  * Log the uploaded file to the console
@@ -17,13 +18,12 @@ function onLoadHandler(event) {
  * Handle submit events
  * @param  {Event} event The event object
  */
-function handleSubmit(event) {
-  event.preventDefault();
-  if (!file.value.length) return;
-
+function handleSubmit() {
   let reader = new FileReader();
   reader.onload = onLoadHandler;
   reader.readAsText(file.files[0]);
+  fileInputContainer.remove();
+  boorkmarklet.remove();
 }
 
-form.addEventListener("submit", handleSubmit);
+file.addEventListener("change", handleSubmit);

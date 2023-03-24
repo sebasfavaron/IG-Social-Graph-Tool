@@ -6,7 +6,7 @@ It's split into two parts:
 1. Running the website:
    1. Use the tool you prefer to start a simple http server. A simple one if you have python installed is [SimpleHTTPServer](https://www.redhat.com/sysadmin/simple-http-server). Personally, I'm using the [simple-hot-reload-server](https://www.npmjs.com/package/simple-hot-reload-server/v/1.1.4)
 2. Generating the data:
-   1. From the server you just ran, you need to drag the bookmark link
+   1. From the server you just ran, you need to drag the bookmark link (Note: if you want to modify the bookmarklet see here[^1])
    2. Head to [instagram](https://www.instagram.com)
    3. Click the bookmarklet
    4. Wait 15-20 seconds until it prompts you to download the json (TODO: add example json image or gif of the process)
@@ -25,3 +25,5 @@ If you have any issues, don't hesitate contacting me. I have only tested this on
 - Bookmarklet
   - [Creation](https://www.freecodecamp.org/news/what-are-bookmarklets/)
   - [Method to save json](https://stackoverflow.com/a/60377870)
+
+[^1]: I left the [file](./bookmarklet-download-ig-data.js) in the repo to be able to be modified. A simple way of updating the bookmark after modification is selecting the whole file's text, and pasting it directly in the bookmark's address.
