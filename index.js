@@ -3,6 +3,14 @@ export function drawGraph(graph) {
     width = window.innerWidth,
     height = window.innerHeight;
 
+  var gMain = svg.append("g").classed("g-main", true);
+  var gDraw = gMain.append("g");
+  var zoom = d3.zoom().on("zoom", zoomed);
+  gMain.call(zoom);
+  function zoomed() {
+    gDraw.attr("transform", d3.event.transform);
+  }
+
   var color = d3.scaleOrdinal(d3.schemeCategory20);
 
   var simulation = d3
@@ -11,7 +19,7 @@ export function drawGraph(graph) {
       "link",
       d3.forceLink().id((d) => d.id)
     )
-    .force("charge", d3.forceManyBody().strength(-200))
+    .force("charge", d3.forceManyBody().strength(-100))
     .force("center", d3.forceCenter(width / 2, height / 2))
     .force(
       "collide",
