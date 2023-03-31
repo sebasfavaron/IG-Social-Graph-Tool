@@ -1,126 +1,85 @@
 javascript: (async () => {
-  const SocialType = {
-    FOLLOWERS: 'followers',
-    FOLLOWINGS: 'followings',
-  };
-
-  function memoize(fn) {
-    let cache = {};
-    return (...args) => {
-      let n = args[0];
-      if (n in cache) {
-        return cache[n];
-      } else {
-        let result = fn(n);
-        cache[n] = result;
-        return result;
-      }
-    };
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function getMutualFriends({ username, pk, graph }) {
+  async function getMutualFriendsFetch(user) {
     const mutualFriendsRes = await fetch(
-      `https://www.instagram.com/api/v1/friendships/${pk}/mutual_followers/`,
+      `https://www.instagram.com/api/v1/friendships/${user.pk}/mutual_followers/`,
       {
         headers: {
-          accept: '*/*',
-          'accept-language':
-            'en-US,en;q=0.9,it-IT;q=0.8,it;q=0.7,es-AR;q=0.6,es;q=0.5',
-          'sec-ch-prefers-color-scheme': 'dark',
-          'sec-ch-ua':
-            '"Chromium";v="110", "Not A(Brand";v="24", "Google Chrome";v="110"',
-          'sec-ch-ua-mobile': '?0',
-          'sec-ch-ua-platform': '"macOS"',
-          'sec-fetch-dest': 'empty',
-          'sec-fetch-mode': 'cors',
-          'sec-fetch-site': 'same-origin',
-          'viewport-width': '1512',
-          'x-asbd-id': '198387',
-          'x-csrftoken': '7Vs0XofofZJ5qslzJdxvI0CUNBaAal1n',
           'x-ig-app-id': '936619743392459',
-          'x-ig-www-claim':
-            'hmac.AR0qVk7mQ5JK8qsBmy-AEVB9e9EtWlKmdXwjPKgwiMy85l1f',
-          'x-requested-with': 'XMLHttpRequest',
         },
-        referrer: `https://www.instagram.com/${username}/followers/mutualOnly`,
-        referrerPolicy: 'strict-origin-when-cross-origin',
-        body: null,
-        method: 'GET',
-        mode: 'cors',
-        credentials: 'include',
       }
     );
-    let mutual = await mutualFriendsRes.json();
-    mutual = mutual.users.map((friend) => friend.username);
+    await sleep(500);
+    let mutualFriends = await mutualFriendsRes.json();
+    return mutualFriends.users.map((mutualFriend) => mutualFriend.username);
+  }
+
+  async function getMutualFriends(user, graph) {
+    const mutualFriends = await getMutualFriendsFetch(user);
+
     graph.nodes = graph.nodes.concat(
-      mutual
-        .filter(
-          (username) =>
-            graph.nodes.findIndex((n) => n && n.id && n.id === username) === -1
-        )
-        .map((username) => ({ id: username, group: 1 }))
+      mutualFriends.map((mutualFriend) => {
+        return { id: mutualFriend, group: 1 };
+      })
     );
     graph.links = graph.links.concat(
-      mutual.map((mutualUsername) => ({
-        source: mutualUsername,
-        target: username,
+      mutualFriends.map((mutualFriendUsername) => ({
+        source: mutualFriendUsername,
+        target: user.username,
         value: 1,
       }))
     );
   }
 
-  async function getLoggedUserSocialCircle(user, socialObject, graph) {
-    if (
-      socialObject.type !== SocialType.FOLLOWERS &&
-      socialObject.type !== SocialType.FOLLOWINGS
-    ) {
-      throw new Error('Invalid social type');
-    }
-    let after = null;
-    let has_next = true;
-    let count = 0,
-      step = Math.min(socialObject.limit, 500);
-    let username = user.username;
-    let isFollower = socialObject.type === SocialType.FOLLOWERS;
+  async function getLoggedFollowersFetch(pk, step, after) {
+    const res = await fetch(
+      `https://www.instagram.com/graphql/query/?query_hash=c76146de99bb02f6415203be841dd25a&variables=` +
+        encodeURIComponent(
+          JSON.stringify({
+            id: pk,
+            include_reel: true,
+            fetch_mutual: true,
+            first: step,
+            after: after,
+          })
+        ),
+      {
+        headers: {
+          'x-ig-app-id': '936619743392459',
+        },
+      }
+    );
 
-    while (has_next && count < socialObject.limit && step > 0) {
-      const res = await fetch(
-        `https://www.instagram.com/graphql/query/?query_hash=${socialObject.fetchHash}&variables=` +
-          encodeURIComponent(
-            JSON.stringify({
-              id: user.pk,
-              include_reel: true,
-              fetch_mutual: true,
-              first: step,
-              after: after,
-            })
-          )
-      );
-      const jsonRes = await res.json();
+    const jsonRes = await res.json();
+    return jsonRes.data.user.edge_followed_by;
+  }
 
-      count += step;
-      let results = isFollower
-        ? jsonRes.data.user.edge_followed_by
-        : jsonRes.data.user.edge_follow;
+  async function getLoggedFollowers(user, graph) {
+    let after = null,
+      has_next = true,
+      count = 0,
+      step = 500,
+      limit = 500,
+      username = user.username;
+
+    while (has_next && count < limit) {
+      let results = await getLoggedFollowersFetch(user.pk, step, after);
       has_next = results.page_info.has_next_page;
       after = results.page_info.end_cursor;
+      count += results.edges.length;
       graph.nodes = graph.nodes.concat(
-        results.edges
-          .filter(
-            ({ node }) =>
-              graph.nodes.findIndex(
-                (n) => n && n.id && n.id === node.username
-              ) === -1
-          )
-          .map(({ node }) => {
-            return { id: node.username, group: 1 };
-          })
+        results.edges.map(({ node }) => {
+          return { id: node.username, group: 1 };
+        })
       );
       graph.links = graph.links.concat(
         results.edges.map(({ node }) => {
           return {
-            source: isFollower ? node.username : username,
-            target: isFollower ? username : node.username,
+            source: node.username,
+            target: username,
             value: 1,
           };
         })
@@ -132,6 +91,7 @@ javascript: (async () => {
     const userQueryRes = await fetch(
       `https://www.instagram.com/web/search/topsearch/?query=${username}/`
     );
+
     const userQueryJson = await userQueryRes.json();
     if (
       !userQueryJson.users ||
@@ -146,21 +106,27 @@ javascript: (async () => {
   async function addUserInfoToGraph(
     username = '',
     graph,
-    infoFetchFn = () => {}
+    infoFetchFn = async () => {}
   ) {
-    try {
-      if (!username) throw new Error('Username is required');
-      console.log(`Making subgraph for ${username}...`);
+    if (!username) throw new Error('Username is required');
 
-      if (!graph.nodes.find((n) => n && n.id && n.id === username)) {
-        graph.nodes.push({ id: username, group: 1 });
-      }
-
-      let user = getUserInfo(username);
-      await infoFetchFn(user, graph);
-    } catch (err) {
-      console.log({ err });
+    console.log(`Getting user info for ${username}...`);
+    if (!graph.nodes.find((n) => n && n.id && n.id === username)) {
+      graph.nodes.push({ id: username, group: 1 });
     }
+
+    let user = await getUserInfo(username);
+    await infoFetchFn(user, graph);
+  }
+
+  function deduped(array, key) {
+    return array.reduce((acc, current) => {
+      const x = acc.find((item) => item[key] === current[key]);
+      if (!x) {
+        acc.push(current);
+      }
+      return acc;
+    }, []);
   }
 
   async function makeGraph(loggedUsername) {
@@ -168,32 +134,18 @@ javascript: (async () => {
       nodes: [],
       links: [],
     };
-    await addUserInfoToGraph(loggedUsername, graph, async (user, graph) => {
-      let followers = {
-        type: SocialType.FOLLOWERS,
-        fetchHash: 'c76146de99bb02f6415203be841dd25a',
-        limit: 1,
-      };
-      await getLoggedUserSocialCircle(user, followers, graph);
-
-      let followings = {
-        type: SocialType.FOLLOWINGS,
-        fetchHash: 'd04b0a864b4b54837c0d870b0e77e076',
-        limit: 0,
-      };
-      await getLoggedUserSocialCircle(user, followings, graph);
-    });
-    await Promise.all(
-      graph.nodes.map((n) =>
-        addUserInfoToGraph(n.id, graph, async (user, graph) => {
-          await getMutualFriends({
-            username: user.username,
-            pk: user.pk,
-            graph,
-          });
-        })
-      )
-    );
+    try {
+      await addUserInfoToGraph(loggedUsername, graph, getLoggedFollowers);
+      const followers = graph.nodes
+        .map((n) => n.id)
+        .filter((n) => n !== undefined && n !== loggedUsername);
+      for (const follow of followers) {
+        await addUserInfoToGraph(follow, graph, getMutualFriends);
+      }
+    } catch (err) {
+      console.log({ err });
+    }
+    graph.nodes = deduped(graph.nodes, 'id');
 
     return graph;
   }
@@ -228,5 +180,6 @@ javascript: (async () => {
   );
   const graph = await makeGraph(loggedUsername);
   downloadData(graph);
+
   console.log('Done getting user info.');
 })();
