@@ -1,8 +1,8 @@
-import { drawGraph } from "./index.js";
+import { drawGraph } from './index.js';
 
-let file = document.querySelector("#file");
-let fileInputContainer = document.querySelector("#file-input-container");
-let boorkmarklet = document.querySelector("#boorkmarklet");
+let file = document.querySelector('#file');
+let fileInputContainer = document.querySelector('#file-input-container');
+let bookmarklet = document.querySelector('#bookmarklet');
 
 /**
  * Log the uploaded file to the console
@@ -11,6 +11,9 @@ let boorkmarklet = document.querySelector("#boorkmarklet");
 function onLoadHandler(event) {
   let str = event.target.result;
   let json = JSON.parse(str);
+  if (json.username) {
+    document.title = `${json.username}'s friends`;
+  }
   drawGraph(json);
 }
 
@@ -22,8 +25,11 @@ function handleSubmit() {
   let reader = new FileReader();
   reader.onload = onLoadHandler;
   reader.readAsText(file.files[0]);
+  const svg = document.getElementsByTagName('svg')[0];
+  svg.style.width = '100%';
+  svg.style.height = '100%';
   fileInputContainer.remove();
-  boorkmarklet.remove();
+  bookmarklet.remove();
 }
 
-file.addEventListener("change", handleSubmit);
+file.addEventListener('change', handleSubmit);

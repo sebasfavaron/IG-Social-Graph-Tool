@@ -171,7 +171,7 @@ javascript: (async () => {
   }
   if (loggedUsername === '' || loggedUsername === undefined) {
     alert(
-      "Couldn't find logged username. Please make sure you are in instagram and are logged in."
+      'Could not find logged username. Please make sure you are in instagram and are logged in.'
     );
     return;
   }
@@ -179,6 +179,7 @@ javascript: (async () => {
     `Getting user info for ${loggedUsername}. This may take a 15-20 seconds...`
   );
   const graph = await makeGraph(loggedUsername);
+  graph.username = loggedUsername;
   downloadData(graph);
 
   console.log('Done getting user info.');
