@@ -2,21 +2,12 @@ const { argv } = require('process');
 const fs = require('fs');
 
 function removeSingleLinks(socialGraph) {
-  const newNodes = socialGraph.nodes.filter((node) => {
-    if (node.id === 'maruuadrian') {
-      console.log({
-        node,
-        links: socialGraph.links.filter(
-          (link) => node.id === link.source || node.id === link.target
-        ),
-      });
-    }
-    return (
+  const newNodes = socialGraph.nodes.filter(
+    (node) =>
       socialGraph.links.filter(
         (link) => node.id === link.source || node.id === link.target
       ).length > 1
-    );
-  });
+  );
   const newNodeIds = newNodes.map((n) => n.id);
   const newLinks = socialGraph.links.filter(
     (link) =>
