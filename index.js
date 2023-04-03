@@ -1,40 +1,23 @@
 export function drawGraph({ nodes, links }) {
-  // Set up the SVG element and add the nodes and links
-  const svg = d3.select('svg'),
-    width = window.innerWidth,
-    height = window.innerHeight;
+  function convertToValidIdFormat(id) {
+    return id.replace(/[^a-zA-Z0-9]/g, '');
+  }
 
-  const container = svg.append('g').attr('class', 'container');
-
+  // Define style values
   const nodeCircleSize = 2;
   const textSize = 12;
   const linksStrokeWidth = 1;
   const circlesStrokeWidth = 0.5;
   const textsDx = 10;
   const textsDy = 0.35;
-  // Add zoom behavior to the SVG element
-  const zoom = d3
-    .zoom()
-    .scaleExtent([0.01, 40])
-    .on('zoom', (e) => {
-      const { x, y, k } = d3.event.transform;
-      container.attr('transform', `translate(${x}, ${y}) scale(${k})`);
-      // node.attr(
-      //   'transform',
-      //   (d) => `translate(${d.x},${d.y}) scale(${1 / d3.event.transform.k})`
-      // );
-      circles
-        .attr('r', nodeCircleSize / k)
-        .attr('stroke-width', circlesStrokeWidth / k);
-      if (k > 1) {
-        texts.attr('font-size', (d) => textSize / k);
-      } else {
-        texts.attr('font-size', (d) => 0);
-      }
-      texts.attr('dx', textsDx / k).attr('dy', `${textsDy / k}em`);
-      link.style('stroke-width', (d) => linksStrokeWidth / k);
-    });
-  svg.call(zoom);
+  const selectedNodeColor = '#fc7a2f';
+
+  // Set up the SVG element and add the nodes and links
+  const svg = d3.select('svg'),
+    width = window.innerWidth,
+    height = window.innerHeight;
+
+  const container = svg.append('g').attr('class', 'container');
 
   const link = container
     .selectAll('.link')
@@ -61,8 +44,8 @@ export function drawGraph({ nodes, links }) {
   const circles = node
     .append('circle')
     .attr('r', nodeCircleSize)
-    .attr('fill', '#000')
-    .attr('stroke', '#fff')
+    .attr('fill', 'black')
+    .attr('stroke', 'white')
     .attr('stroke-width', circlesStrokeWidth);
 
   const texts = node
@@ -73,34 +56,107 @@ export function drawGraph({ nodes, links }) {
     .attr('font-size', `${textSize}px`)
     .attr('font-family', 'Arial');
 
+  const stylesClass = () => {
+    let k = 1;
+    let clickedNode = clickedNodeClass();
+    return {
+      setK: (newK) => {
+        k = newK;
+        clickedNode.setK(newK);
+      },
+      clickedNode,
+      resetStyles: () => {
+        node.style('opacity', 1);
+        node.select('text').attr('font-size', textSize / k);
+        node.select('circle').attr('fill', 'black');
+        node.select('circle').attr('r', nodeCircleSize / k);
+      },
+      setBackgroundNodesStyles: () => {
+        node.style('opacity', 0.1);
+        node.select('text').attr('font-size', textSize / k);
+        node.select('circle').attr('fill', 'black');
+        node.select('circle').attr('r', nodeCircleSize / k);
+      },
+      setStyles: () => {
+        if (k > 1) {
+          texts.attr('font-size', textSize / k);
+        } else {
+          texts.attr('font-size', 0);
+        }
+        texts.attr('dx', textsDx / k).attr('dy', `${textsDy / k}em`);
+        circles
+          .attr('r', nodeCircleSize / k)
+          .attr('stroke-width', circlesStrokeWidth / k);
+        link.style('stroke-width', linksStrokeWidth / k);
+      },
+    };
+  };
+  const clickedNodeClass = () => {
+    let node = null;
+    let k = 1;
+    return {
+      setK: (newK) => {
+        k = newK;
+      },
+      setNode: (newNode) => {
+        node = newNode;
+      },
+      setStyles: () => {
+        console.log({ node });
+        if (!node) {
+          return;
+        }
+
+        node.style('opacity', 1);
+        node.select('text').attr('font-size', (textSize * 2) / k);
+        node
+          .select('circle')
+          .attr('fill', selectedNodeColor)
+          .attr('r', (nodeCircleSize * 2) / k);
+      },
+    };
+  };
+  const styleManager = stylesClass();
+
+  // Add zoom behavior to the SVG element
+  const zoom = d3
+    .zoom()
+    .scaleExtent([0.01, 40])
+    .on('zoom', () => {
+      const { x, y, k } = d3.event.transform;
+      container.attr('transform', `translate(${x}, ${y}) scale(${k})`);
+
+      styleManager.setK(k);
+      styleManager.setStyles();
+      styleManager.clickedNode.setStyles();
+    });
+  svg.call(zoom);
+
   function getUsersFollowers(username) {
     return links.filter((link) => link.target.id === username);
   }
 
-  function convertToValidIdFormat(id) {
-    return id.replace(/[^a-zA-Z0-9]/g, '');
-  }
-
+  // Add click listeners
   node.on('click', function (event) {
     d3.event.stopPropagation();
-    d3.selectAll('.node').style('opacity', 0.1);
-    d3.select(this).style('opacity', 1);
-    d3.select(this).select('circle').style('color', 'red');
+
+    // Reset all nodes' styles
+    styleManager.setBackgroundNodesStyles();
+
+    // Highlight the clicked node
+    styleManager.clickedNode.setNode(d3.select(this));
+    styleManager.clickedNode.setStyles();
+
+    // Highlight the clicked node's followers
     const usersFollowers = getUsersFollowers(event.id);
-    console.log(
-      `${event.id} follows: ${usersFollowers.map(
-        (follower) => follower.source.id
-      )}`
-    );
     usersFollowers.forEach((follower) =>
       d3
         .select(`#${convertToValidIdFormat(follower.source.id)}`)
         .style('opacity', 1)
     );
   });
-  d3.select('body').on('click', (event, d) => {
-    console.log('body', { event });
-    d3.selectAll('.node').style('opacity', 1);
+  d3.select('body').on('click', () => {
+    styleManager.resetStyles();
   });
 
   // Set up the force simulation
