@@ -49,6 +49,7 @@ export function drawGraph({ nodes, links }) {
     .enter()
     .append('g')
     .attr('class', 'node')
+    .attr('id', (d) => convertToValidIdFormat(d.id))
     .call(
       d3
         .drag()
@@ -71,6 +72,36 @@ export function drawGraph({ nodes, links }) {
     .attr('dy', `${textsDy}em`)
     .attr('font-size', `${textSize}px`)
     .attr('font-family', 'Arial');
+
+  function getUsersFollowers(username) {
+    return links.filter((link) => link.target.id === username);
+  }
+
+  function convertToValidIdFormat(id) {
+    return id.replace(/[^a-zA-Z0-9]/g, '');
+  }
+
+  node.on('click', function (event) {
+    d3.event.stopPropagation();
+    d3.selectAll('.node').style('opacity', 0.1);
+    d3.select(this).style('opacity', 1);
+    d3.select(this).select('circle').style('color', 'red');
+    const usersFollowers = getUsersFollowers(event.id);
+    console.log(
+      `${event.id} follows: ${usersFollowers.map(
+        (follower) => follower.source.id
+      )}`
+    );
+    usersFollowers.forEach((follower) =>
+      d3
+        .select(`#${convertToValidIdFormat(follower.source.id)}`)
+        .style('opacity', 1)
+    );
+  });
+  d3.select('body').on('click', (event, d) => {
+    console.log('body', { event });
+    d3.selectAll('.node').style('opacity', 1);
+  });
 
   // Set up the force simulation
   const simulation = d3

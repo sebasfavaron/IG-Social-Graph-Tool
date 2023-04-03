@@ -8,6 +8,10 @@ function removeSingleLinks(socialGraph) {
         (link) => node.id === link.source || node.id === link.target
       ).length > 1
   );
+  const removedNodes = socialGraph.nodes.filter(
+    (node) => newNodes.find((n) => n.id === node.id) === undefined
+  );
+  console.log(`Removed nodes: ${removedNodes.map((n) => n.id).join(', ')}`);
   const newNodeIds = newNodes.map((n) => n.id);
   const newLinks = socialGraph.links.filter(
     (link) =>

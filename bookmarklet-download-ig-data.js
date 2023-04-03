@@ -155,8 +155,8 @@ javascript: (async () => {
         processingCount++;
         console.log(
           `${processedPercentage(processingCount)}% - ${
-            fetched ? 'Already fetched' : 'Getting user info for'
-          } ${follower}...`
+            fetched ? 'Already fetched' : 'Getting'
+          } user info for ${follower}...`
         );
         if (!fetched) {
           await addUserInfoToGraph(follower, graph, getMutualFriends);
