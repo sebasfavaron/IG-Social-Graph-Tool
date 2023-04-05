@@ -1,8 +1,4 @@
 javascript: (async () => {
-  function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
   async function getMutualFriendsFetch(user) {
     const mutualFriendsRes = await fetch(
       `https://www.instagram.com/api/v1/friendships/${user.pk}/mutual_followers/`,
@@ -12,7 +8,6 @@ javascript: (async () => {
         },
       }
     );
-    await sleep(500);
     let mutualFriends = await mutualFriendsRes.json();
     return mutualFriends.users.map((mutualFriend) => mutualFriend.username);
   }

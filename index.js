@@ -2,12 +2,18 @@ export function drawGraph({ nodes, links }) {
   function convertToValidIdFormat(id) {
     return id.replace(/[^a-zA-Z0-9]/g, '');
   }
+  function isMobile() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
+  }
+  const isClientMobile = isMobile();
 
   // Define style values
-  const nodeCircleSize = 2;
-  const textSize = 12;
-  const linksStrokeWidth = 1;
-  const circlesStrokeWidth = 1;
+  const nodeCircleSize = isClientMobile ? 6 : 2;
+  const textSize = isClientMobile ? 24 : 12;
+  const linksStrokeWidth = isClientMobile ? 2 : 1;
+  const circlesStrokeWidth = isClientMobile ? 2 : 1;
   const textsDx = 10;
   const textsDy = 0.35;
   const mainColor = 'black';
