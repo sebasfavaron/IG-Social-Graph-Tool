@@ -28,6 +28,21 @@ export function drawGraph({ nodes, links }) {
 
   const container = svg.append('g').attr('class', 'container');
 
+  // Add the arrowhead marker
+  const arrow = container
+    .append('defs')
+    .append('marker')
+    .attr('id', 'arrow')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', '-2%')
+    .attr('markerWidth', 8)
+    .attr('markerHeight', 8)
+    .attr('orient', 'auto')
+    .attr('markerUnits', 'strokeWidth')
+    .append('path')
+    .attr('d', 'M0,-5L10,0L0,5')
+    .attr('class', 'arrowhead');
+
   const link = container
     .selectAll('.link')
     .data(links)
@@ -89,6 +104,9 @@ export function drawGraph({ nodes, links }) {
         link.style.strokeOpacity = linkOpacity;
         link.style.stroke = linkColor;
       });
+
+      // Hide all arrows
+      link.attr('marker-start', 'none');
     };
 
     return {
@@ -113,6 +131,7 @@ export function drawGraph({ nodes, links }) {
           .attr('r', nodeCircleSize / k)
           .attr('stroke-width', circlesStrokeWidth / k);
         link.style('stroke-width', linksStrokeWidth / k);
+        link.node().getTotalLength();
       },
     };
   };
@@ -171,8 +190,27 @@ export function drawGraph({ nodes, links }) {
     });
   svg.call(zoom);
 
-  function getUsersFollowers(username) {
-    return links.filter((link) => link.target.id === username);
+  function getUsersFriendLinks(username) {
+    const followings = links.filter((link) => link.source.id === username);
+    const followers = links.filter((link) => link.target.id === username);
+    const friendships = followers.filter((follower) =>
+      followings.some((following) => following.target.id === follower.source.id)
+    );
+    friendships.forEach((friendship) => {
+      followers.splice(followers.indexOf(friendship), 1);
+      followings.splice(
+        followings.findIndex(
+          (following) => following.target.id === friendship.source.id
+        ),
+        1
+      );
+    });
+
+    return {
+      followings,
+      followers,
+      friendships,
+    };
   }
 
   // Add click listeners
@@ -187,22 +225,32 @@ export function drawGraph({ nodes, links }) {
     styleManager.clickedNode.setStyles();
 
     // Highlight the clicked node's followers and their links
-    const usersFollowers = getUsersFollowers(event.id);
-    usersFollowers.forEach((follower) => {
-      const followerNode = d3.select(
-        `#${convertToValidIdFormat(follower.source.id)}`
+    const usersFriendLinks = getUsersFriendLinks(event.id);
+    function setLinkStyle(link, color) {
+      const sourceNode = d3.select(
+        `#${convertToValidIdFormat(link.source.id)}`
       );
-      followerNode.style('opacity', 0.8);
+      sourceNode.style('opacity', 0.8);
 
-      const followerLink = document.querySelector(
-        '#' +
-          convertToValidIdFormat(
-            `link-${follower.source.id}-${follower.target.id}`
-          )
+      const linkElement = document.querySelector(
+        '#' + convertToValidIdFormat(`link-${link.source.id}-${link.target.id}`)
       );
-      followerLink.style.strokeOpacity = 0.8;
-      followerLink.style.stroke = 'red';
-    });
+      linkElement.style.strokeOpacity = 0.8;
+      linkElement.style.stroke = color;
+      linkElement.setAttribute('marker-start', 'url(#arrow)');
+      const oppositeLinkElement = document.querySelector(
+        '#' + convertToValidIdFormat(`link-${link.target.id}-${link.source.id}`)
+      );
+      if (oppositeLinkElement) {
+        oppositeLinkElement.setAttribute('marker-start', 'url(#arrow)');
+      }
+    }
+
+    usersFriendLinks.followers.forEach((link) => setLinkStyle(link, 'red'));
+    usersFriendLinks.followings.forEach((link) => setLinkStyle(link, 'green'));
+    usersFriendLinks.friendships.forEach((link) =>
+      setLinkStyle(link, 'purple')
+    );
   });
   d3.select('body').on('click', () => {
     styleManager.resetStyles();
@@ -226,6 +274,8 @@ export function drawGraph({ nodes, links }) {
   // Update the node and link positions on each tick
   simulation.on('tick', () => {
     node.attr('transform', (d) => `translate(${d.x},${d.y})`);
+
+    // Set the position of the links
     link
       .attr('x1', (d) => d.source.x)
       .attr('y1', (d) => d.source.y)

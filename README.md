@@ -1,6 +1,6 @@
 ## Instagram social graph
 
-This repository attempts to document the process of generating a social graph based on personal ig socials
+Generate a social graph based on your ig socials
 It's split into two parts:
 
 1. Running the website:
