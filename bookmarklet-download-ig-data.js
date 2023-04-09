@@ -16,13 +16,11 @@ javascript: (async () => {
     const mutualFriends = await getMutualFriendsFetch(user);
 
     graph.nodes = graph.nodes.concat(
-      mutualFriends.map((mutualFriend) => {
-        return { id: mutualFriend, group: 1 };
-      })
+      mutualFriends.map((mutualFriend) => ({ id: mutualFriend, group: 1 }))
     );
     graph.links = graph.links.concat(
-      mutualFriends.map((mutualFriendUsername) => ({
-        source: mutualFriendUsername,
+      mutualFriends.map((mutualFriend) => ({
+        source: mutualFriend,
         target: user.username,
         value: 1,
       }))
@@ -66,18 +64,14 @@ javascript: (async () => {
       after = results.page_info.end_cursor;
       count += results.edges.length;
       graph.nodes = graph.nodes.concat(
-        results.edges.map(({ node }) => {
-          return { id: node.username, group: 1 };
-        })
+        results.edges.map(({ node }) => ({ id: node.username, group: 1 }))
       );
       graph.links = graph.links.concat(
-        results.edges.map(({ node }) => {
-          return {
-            source: node.username,
-            target: username,
-            value: 1,
-          };
-        })
+        results.edges.map(({ node }) => ({
+          source: node.username,
+          target: username,
+          value: 1,
+        }))
       );
     }
   }
