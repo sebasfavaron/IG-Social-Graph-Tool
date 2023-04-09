@@ -34,9 +34,10 @@ export function drawGraph({ nodes, links }) {
     .append('marker')
     .attr('id', 'arrow')
     .attr('viewBox', '0 -5 10 10')
-    .attr('refX', '-2%')
-    .attr('markerWidth', 8)
-    .attr('markerHeight', 8)
+    .attr('refX', '-4%')
+    .attr('markerWidth', 6)
+    .attr('markerHeight', 6)
+    .attr('fill', linkColor)
     .attr('orient', 'auto')
     .attr('markerUnits', 'strokeWidth')
     .append('path')
@@ -131,7 +132,6 @@ export function drawGraph({ nodes, links }) {
           .attr('r', nodeCircleSize / k)
           .attr('stroke-width', circlesStrokeWidth / k);
         link.style('stroke-width', linksStrokeWidth / k);
-        link.node().getTotalLength();
       },
     };
   };
@@ -246,7 +246,7 @@ export function drawGraph({ nodes, links }) {
       }
     }
 
-    usersFriendLinks.followers.forEach((link) => setLinkStyle(link, 'red'));
+    usersFriendLinks.followers.forEach((link) => setLinkStyle(link, '#ca2d2d')); // red
     usersFriendLinks.followings.forEach((link) => setLinkStyle(link, 'green'));
     usersFriendLinks.friendships.forEach((link) =>
       setLinkStyle(link, 'purple')
