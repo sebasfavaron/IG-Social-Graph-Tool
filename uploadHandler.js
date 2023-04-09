@@ -1,3 +1,4 @@
+import { removeSingleLinks } from './graph-scripts/pruneSocialGraphLib.js';
 import { drawGraph } from './index.js';
 
 let file = document.querySelector('#file');
@@ -14,6 +15,10 @@ function onLoadHandler(event) {
   if (json.username) {
     document.title = `${json.username}'s friends`;
   }
+
+  // Done twice due to a bug where first pass removes a lone node that generates a new lone node
+  json = removeSingleLinks(json);
+  json = removeSingleLinks(json);
   drawGraph(json);
 }
 
