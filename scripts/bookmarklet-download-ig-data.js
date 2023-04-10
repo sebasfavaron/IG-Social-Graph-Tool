@@ -1,4 +1,18 @@
-javascript: (async () => {
+javascript: (async function () {
+  function showToast(message) {
+    console.log(message);
+
+    const toast = body.createElement('div');
+    toast.classList.add('toast');
+    toast.innerText = message;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      toast.remove();
+    }, 3000);
+  }
+
   async function getMutualFriendsFetch(user) {
     const mutualFriendsRes = await fetch(
       `https://www.instagram.com/api/v1/friendships/${user.pk}/mutual_followers/`,
@@ -120,7 +134,7 @@ javascript: (async () => {
   async function makeGraph(loggedUsername, graph) {
     try {
       if (!graph.metadata.loggedUserFetched) {
-        console.log(`Getting user info for ${loggedUsername}...`);
+        showToast(`Getting user info for ${loggedUsername}...`);
         await addUserInfoToGraph(loggedUsername, graph, getLoggedFollowers);
         graph.metadata.loggedUserFetched = true;
         graph.metadata.followersFetched = graph.nodes.reduce(
@@ -133,7 +147,7 @@ javascript: (async () => {
           {}
         );
       } else {
-        console.log(`Already fetched user info for ${loggedUsername}...`);
+        showToast(`Already fetched user info for ${loggedUsername}...`);
       }
 
       const followers = Object.entries(graph.metadata.followersFetched);
@@ -142,7 +156,7 @@ javascript: (async () => {
         Math.round((100 * 100 * count) / followers.length) / 100;
       for (const [follower, fetched] of followers) {
         processingCount++;
-        console.log(
+        showToast(
           `${processedPercentage(processingCount)}% - ${
             fetched ? 'Already fetched' : 'Getting'
           } user info for ${follower}...`
@@ -233,9 +247,9 @@ javascript: (async () => {
     return;
   }
 
-  console.log('Starting...');
+  showToast('Starting...');
   let graph = await getPreviousGraph();
   graph = await makeGraph(loggedUsername, graph);
   downloadData(graph);
-  console.log('Done getting user info.');
+  showToast('Done getting user info.');
 })();

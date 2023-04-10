@@ -1,9 +1,5 @@
-import { removeSingleLinks } from './graph-scripts/pruneSocialGraphLib.js';
-import { drawGraph } from './index.js';
-
-let file = document.querySelector('#file');
-let fileInputContainer = document.querySelector('#file-input-container');
-let bookmarklet = document.querySelector('#bookmarklet');
+import { removeSingleLinks } from './graph-scripts/pruneSocialGraphLib';
+import { drawGraph } from './graphVisualizer';
 
 /**
  * Log the uploaded file to the console
@@ -26,7 +22,9 @@ function onLoadHandler(event) {
  * Handle submit events
  * @param  {Event} event The event object
  */
-function handleSubmit() {
+export function handleSubmit() {
+  let fileInputContainer = document.querySelector('#file-input-container');
+  let bookmarklet = document.querySelector('#bookmarklet');
   let reader = new FileReader();
   reader.onload = onLoadHandler;
   reader.readAsText(file.files[0]);
@@ -36,5 +34,3 @@ function handleSubmit() {
   fileInputContainer.remove();
   bookmarklet.remove();
 }
-
-file.addEventListener('change', handleSubmit);
