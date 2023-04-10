@@ -3,7 +3,7 @@ import Head from 'next/head';
 
 export default function Home() {
   return (
-    <div className='w-full h-full'>
+    <div className='w-full h-full p-2'>
       <Head>
         <meta charSet='utf-8' />
         <title>Force-Directed Graph</title>
@@ -11,7 +11,7 @@ export default function Home() {
       </Head>
 
       <p id='bookmarklet'>
-        <a href="javascript:(()=>{const%20script=document.createElement('script');script.src='https://sebasfavaron.github.io/IG-Social-Graph-Tool/bookmarklet-download-ig-data.js';document.body.appendChild(script);})();">
+        <a href="javascript:(()=>{const%20script=document.createElement('script');script.src='https://sebasfavaron.github.io/IG-Social-Graph-Tool/scripts/bookmarklet-download-ig-data.js';document.body.appendChild(script);})();">
           IG Data Downloader
         </a>
         <span>
