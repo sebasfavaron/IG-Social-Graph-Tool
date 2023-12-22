@@ -1,6 +1,8 @@
 ## Instagram social graph
 
-Generate a social graph based on your ig socials
+### Note: To run from the online version just head to https://ig-social-graph.netlify.app/ and follow the instructions
+
+Generate a social graph based on your ig socials (the local way)
 It's split into two parts:
 
 2. Generating the data:
