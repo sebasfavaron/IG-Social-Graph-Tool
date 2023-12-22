@@ -1,3 +1,4 @@
+# DEPRECATED: this tool does not work anymore because Instagram now blocks scripts coming from github.io
 ## Instagram social graph
 
 ### Note: To run from the online version just head to https://ig-social-graph.netlify.app/ and follow the instructions
