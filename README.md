@@ -3,8 +3,6 @@
 Generate a social graph based on your ig socials
 It's split into two parts:
 
-1. Running the website:
-   1. Use the tool you prefer to start a simple http server. A simple one if you have python installed is [SimpleHTTPServer](https://www.redhat.com/sysadmin/simple-http-server). Personally, I'm using the [simple-hot-reload-server](https://www.npmjs.com/package/simple-hot-reload-server/v/1.1.4)
 2. Generating the data:
    1. From the server you just ran, you need to drag the bookmark link (Note: if you want to modify the bookmarklet see here[^1])
    2. Head to [instagram](https://www.instagram.com)
@@ -13,8 +11,9 @@ It's split into two parts:
    5. Wait until it finishes and downloads the json. You can use the console to see the progress
    6. (Optional) If you want to remove accounts only you follow from the data run [prune](./pruneSocialGraph.js) with the filename. It will return a new file without the lone followings (this helps remove influencers or ig shops and makes the graph cleaner)
 3. Visualizing the data:
-   1. Upload the recently downloaded json file using the "Upload" button
-   2. Enjoy your own personal, interactive social graph!
+   1. Enter the [website](https://ig-social-graph.netlify.app/). Alternatively, you can run the website locally. Use the tool you prefer to start a simple http server. A simple one if you have python installed is [SimpleHTTPServer](https://www.redhat.com/sysadmin/simple-http-server). Personally, I'm using the [simple-hot-reload-server](https://www.npmjs.com/package/simple-hot-reload-server/v/1.1.4)
+   2. Upload the recently downloaded json file using the "Upload" button
+   3. Enjoy your own personal, interactive social graph!
 
 If you have any issues, don't hesitate contacting me. I have only tested this on a Mac using Safari and Chrome so far
 
