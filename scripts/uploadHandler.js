@@ -8,14 +8,7 @@ import { drawGraph } from './graphVisualizer';
 function onLoadHandler(event) {
   let str = event.target.result;
   let json = JSON.parse(str);
-  if (json.username) {
-    document.title = `${json.username}'s friends`;
-  }
-
-  // Done twice due to a bug where first pass removes a lone node that generates a new lone node
-  json = removeSingleLinks(json);
-  json = removeSingleLinks(json);
-  drawGraph(json);
+  onLoadJson(json);
 }
 
 /**
@@ -23,14 +16,26 @@ function onLoadHandler(event) {
  * @param  {Event} event The event object
  */
 export function handleSubmit() {
-  let fileInputContainer = document.querySelector('#file-input-container');
-  let bookmarklet = document.querySelector('#bookmarklet');
   let reader = new FileReader();
   reader.onload = onLoadHandler;
   reader.readAsText(file.files[0]);
-  const svg = document.getElementsByTagName('svg')[0];
-  svg.style.width = '100%';
-  svg.style.height = '100%';
-  fileInputContainer.remove();
-  bookmarklet.remove();
+}
+
+export function onLoadJson(jsonGraph) {
+  if (jsonGraph.username) {
+    document.title = `${jsonGraph.username}'s friends`;
+  }
+
+  // Done twice due to a bug where first pass removes a lone node that generates a new lone node
+  jsonGraph = removeSingleLinks(jsonGraph);
+  jsonGraph = removeSingleLinks(jsonGraph);
+  drawGraph(jsonGraph);
+}
+
+export async function manualJsonLoad() {
+  let jsonGraph = await fetch('/ig-social-data-sebas.json')
+    .then((response) => response.json())
+    .catch((error) => console.error('Error fetching data:', error));
+
+  onLoadJson(jsonGraph);
 }
