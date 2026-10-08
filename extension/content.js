@@ -38,18 +38,57 @@
     });
 
     if (!response.ok) {
-      throw new Error(`Instagram request failed (${response.status})`);
-    }
+      throw new Error(`Instagram request failed (${response.status})`);\n    }
 
     return response.json();
   }
 
   function getLoggedUserFromWindow() {
-    return window._sharedData?.config?.viewer || null;
+    // Try multiple locations where Instagram stores viewer data
+    // 1. Try window._sharedData (older pages)
+    try {
+      const viewer = window._sharedData?.config?.viewer;
+      if (viewer?.username && viewer?.pk) return viewer;
+    } catch (e) {
+      // silent fail
+    }
+
+    // 2. Try extracting from DOM - username in URL for profile pages
+    const profileMatch = window.location.pathname.match(/^\/([a-zA-Z0-9_.]+)\\/?$/);
+    if (profileMatch) {
+      const username = profileMatch[1];
+      
+      // Try to extract pk from the page HTML
+      const htmlString = document.documentElement.outerHTML;
+      const pkMatch = htmlString.match(/\"id\":\"(\\d+)\".*?\"username\":\"${username}\"/);
+      
+      if (pkMatch) {
+        return {
+          username,
+          pk: parseInt(pkMatch[1], 10),
+        };
+      }
+    }
+
+    // 3. Try to get from any window object with user data
+    try {
+      for (const key in window) {
+        if (key.includes('viewer') || key.includes('user')) {
+          const obj = window[key];
+          if (obj?.username && obj?.pk) {
+            return obj;
+          }
+        }
+      }
+    } catch (e) {
+      // silent fail
+    }
+
+    return null;
   }
 
   function fileNameFromUsername(username) {
-    return `${(username || 'ig-social-circle').replace(/\s+/g, '-').toLowerCase()}.json`;
+    return `${(username || 'ig-social-circle').replace(/\\s+/g, '-').toLowerCase()}.json`;
   }
 
   function dedupeNodes(nodes) {
@@ -75,7 +114,7 @@
   async function collectFollowersGraph() {
     const viewer = getLoggedUserFromWindow();
     if (!viewer || !viewer.username || !viewer.pk) {
-      throw new Error('Please make sure you are signed in to Instagram and open your own profile page.');
+      throw new Error('Unable to find your Instagram profile data. Please make sure:\n1. You are signed in to Instagram\n2. You are on your own profile page (not another user\'s profile)\n3. The page has fully loaded\n\nIf this persists, Instagram may have changed how they store user data.');
     }
 
     const graph = {
