@@ -38,7 +38,8 @@
     });
 
     if (!response.ok) {
-      throw new Error(`Instagram request failed (${response.status})`);\n    }
+      throw new Error(`Instagram request failed (${response.status})`);
+    }
 
     return response.json();
   }
@@ -54,13 +55,13 @@
     }
 
     // 2. Try extracting from DOM - username in URL for profile pages
-    const profileMatch = window.location.pathname.match(/^\/([a-zA-Z0-9_.]+)\\/?$/);
+    const profileMatch = window.location.pathname.match(/^\/([a-zA-Z0-9_.]+)\/?$/);
     if (profileMatch) {
       const username = profileMatch[1];
       
       // Try to extract pk from the page HTML
       const htmlString = document.documentElement.outerHTML;
-      const pkMatch = htmlString.match(/\"id\":\"(\\d+)\".*?\"username\":\"${username}\"/);
+      const pkMatch = htmlString.match(/"id":"(\d+)".*?"username":"/ );
       
       if (pkMatch) {
         return {
@@ -88,7 +89,7 @@
   }
 
   function fileNameFromUsername(username) {
-    return `${(username || 'ig-social-circle').replace(/\\s+/g, '-').toLowerCase()}.json`;
+    return `${(username || 'ig-social-circle').replace(/\s+/g, '-').toLowerCase()}.json`;
   }
 
   function dedupeNodes(nodes) {
