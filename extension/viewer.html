@@ -68,6 +68,13 @@
       .legend [data-cat].pinned {
         background: #f0f0f0;
       }
+      #profile {
+        color: inherit;
+        white-space: nowrap;
+      }
+      #profile[hidden] {
+        display: none;
+      }
       .legend [data-cat]::before {
         content: '';
         display: inline-block;
@@ -163,6 +170,7 @@
         ><span data-cat="following" hidden style="--c: green">following</span
         ><span data-cat="mutual" hidden style="--c: purple">mutual</span>
       </span>
+      <a id="profile" hidden target="_blank" rel="noopener">Instagram ↗</a>
     </header>
     <div id="empty" hidden>
       <div>

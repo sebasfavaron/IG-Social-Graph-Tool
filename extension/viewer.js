@@ -124,6 +124,13 @@ function updateLegend() {
     item.title = LABELS[cat](selected, counts[cat]);
     item.classList.toggle('pinned', pinned === cat);
   }
+  // the selected person's profile, in a new tab
+  $('profile').hidden = !selected;
+  if (selected) {
+    $('profile').href = `https://www.instagram.com/${encodeURIComponent(selected)}/`;
+    $('profile').title = `Open @${selected} on Instagram`;
+    $('profile').textContent = `@${shorten(selected)} on Instagram ↗`;
+  }
   syncUrl();
 }
 
