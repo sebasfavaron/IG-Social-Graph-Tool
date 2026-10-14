@@ -1,9 +1,8 @@
 // onViewChange(byUser) fires on every zoom/pan; byUser is false for programmatic moves
 // (fit on load, panning to a searched person).
-export function drawGraph({ nodes, links }, { onViewChange } = {}) {
-  function convertToValidIdFormat(id) {
-    return id.replace(/[^a-zA-Z0-9]/g, '');
-  }
+// hidden: ids drawn and laid out but kept out of sight (loners) until a selected person's
+// links reach them, so the legend's counts match what its groups show.
+export function drawGraph({ nodes, links }, { onViewChange, hidden = new Set() } = {}) {
   function isMobile() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
       navigator.userAgent
@@ -64,7 +63,15 @@ export function drawGraph({ nodes, links }, { onViewChange } = {}) {
     .enter()
     .append('line')
     .attr('class', 'link')
-    .attr('id', (d) => convertToValidIdFormat(`link-${d.source}-${d.target}`));
+    .classed('loner', (d) => hidden.has(d.source) || hidden.has(d.target));
+
+  // Elements by username / by "source\0target". Looked up through maps, not DOM ids:
+  // ids built from usernames collided once dots and underscores were stripped
+  // (jose.favaron vs josefavaron), and the second one never lit up.
+  const linkByKey = new Map();
+  link.each(function (d) {
+    linkByKey.set(`${d.source}\u0000${d.target}`, this);
+  });
 
   const node = container
     .selectAll('.node')
@@ -72,7 +79,7 @@ export function drawGraph({ nodes, links }, { onViewChange } = {}) {
     .enter()
     .append('g')
     .attr('class', 'node')
-    .attr('id', (d) => convertToValidIdFormat(d.id))
+    .classed('loner', (d) => hidden.has(d.id))
     .call(
       d3
         .drag()
@@ -80,6 +87,10 @@ export function drawGraph({ nodes, links }, { onViewChange } = {}) {
         .on('drag', dragged)
         .on('end', dragended)
     );
+  const nodeById = new Map();
+  node.each(function (d) {
+    nodeById.set(d.id, this);
+  });
 
   const circles = node
     .append('circle')
@@ -114,14 +125,11 @@ export function drawGraph({ nodes, links }, { onViewChange } = {}) {
         .attr('stroke', secondaryColor)
         .attr('r', nodeCircleSize / k);
 
-      const links = document.querySelectorAll('[id^="link"]');
-      links.forEach((link) => {
-        link.style.strokeOpacity = linkOpacity;
-        link.style.stroke = linkColor;
-      });
+      link.style('stroke-opacity', linkOpacity).style('stroke', linkColor);
 
       // Hide all arrows
       link.attr('marker-end', null);
+      container.selectAll('.loner').style('display', 'none');
     };
 
     return {
@@ -170,7 +178,7 @@ export function drawGraph({ nodes, links }, { onViewChange } = {}) {
           return;
         }
 
-        node.style('opacity', 1);
+        node.style('opacity', 1).style('display', null);
         node
           .select('text')
           .attr('font-size', (textSize * 2) / k)
@@ -235,17 +243,14 @@ export function drawGraph({ nodes, links }, { onViewChange } = {}) {
   function setLinkStyle(link, color, username) {
     // light up the other person on the link, not the clicked one
     const other = link.source.id === username ? link.target : link.source;
-    d3.select(`#${convertToValidIdFormat(other.id)}`).style('opacity', 0.8);
+    d3.select(nodeById.get(other.id)).style('opacity', 0.8).style('display', null);
 
-    const linkElement = document.querySelector(
-      '#' + convertToValidIdFormat(`link-${link.source.id}-${link.target.id}`)
-    );
+    const linkElement = linkByKey.get(`${link.source.id}\u0000${link.target.id}`);
+    linkElement.style.display = '';
     linkElement.style.strokeOpacity = 0.8;
     linkElement.style.stroke = color;
     linkElement.setAttribute('marker-end', arrowFor(color));
-    const oppositeLinkElement = document.querySelector(
-      '#' + convertToValidIdFormat(`link-${link.target.id}-${link.source.id}`)
-    );
+    const oppositeLinkElement = linkByKey.get(`${link.target.id}\u0000${link.source.id}`);
     // a mutual link is drawn once; the reverse line gets the second arrowhead
     if (oppositeLinkElement) {
       oppositeLinkElement.setAttribute('marker-end', arrowFor(color));
@@ -327,8 +332,9 @@ export function drawGraph({ nodes, links }, { onViewChange } = {}) {
   function fitToView() {
     const { w, h } = viewSize();
     if (!w || !h) return window.addEventListener('resize', fitToView, { once: true });
-    const xs = nodes.map((d) => d.x);
-    const ys = nodes.map((d) => d.y);
+    const visible = nodes.filter((d) => !hidden.has(d.id));
+    const xs = visible.map((d) => d.x);
+    const ys = visible.map((d) => d.y);
     const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     const fitK = Math.min(4, 0.9 * Math.min(w / (maxX - minX || 1), h / (maxY - minY || 1)));
     svg.call(

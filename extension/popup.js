@@ -1,5 +1,4 @@
 import { toGraph } from './lib/crawler.js';
-import { pruneLoneNodes } from './lib/prune.js';
 import { SHARE_BASE_URL, buildHash, encodeGraph } from './lib/share.js';
 
 const $ = (id) => document.getElementById(id);
@@ -96,10 +95,10 @@ $('reset').onclick = () => {
   if (confirm('Delete everything collected so far?')) act(() => send('reset'));
 };
 $('view').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
-// Same link the viewer's button makes: the graph as shown (loners hidden), on the public page.
+// Same link the viewer's button makes (loners included; the viewer hides them), on the public page.
 $('share').onclick = async () => {
   const { crawl } = await chrome.storage.local.get('crawl');
-  const url = SHARE_BASE_URL + buildHash({ g: await encodeGraph(pruneLoneNodes(toGraph(crawl))) });
+  const url = SHARE_BASE_URL + buildHash({ g: await encodeGraph(toGraph(crawl)) });
   const label = $('share').textContent;
   try {
     await navigator.clipboard.writeText(url);

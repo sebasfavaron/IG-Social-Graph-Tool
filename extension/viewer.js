@@ -28,17 +28,22 @@ function show(graph, { encodedGraph = null } = {}) {
   $('counts').textContent =
     `${pruned.nodes.length} people · ${pruned.links.length} connections` +
     (total > pruned.nodes.length
-      ? ` · ${total - pruned.nodes.length} ${total - pruned.nodes.length === 1 ? 'loner' : 'loners'} hidden`
+      ? ` · ${total - pruned.nodes.length} ${total - pruned.nodes.length === 1 ? 'loner' : 'loners'} hidden until selected`
       : '') +
     (graph.metadata?.complete === false ? ' · partial' : '');
   $('empty').hidden = pruned.nodes.length > 0;
   // Same order whatever the source (crawl, link, example), so the layout comes out the same
   // and a view saved in a link lands on the same people.
-  pruned.nodes.sort((a, b) => byId(a.id, b.id));
-  pruned.links.sort((a, b) => byId(a.source, b.source) || byId(a.target, b.target));
+  // Loners are drawn too but stay hidden until a selection reaches them, so a group in the
+  // legend shows everyone its count includes.
+  const full = { nodes: [...graph.nodes], links: [...graph.links] };
+  full.nodes.sort((a, b) => byId(a.id, b.id));
+  full.links.sort((a, b) => byId(a.source, b.source) || byId(a.target, b.target));
+  const kept = new Set(pruned.nodes.map((n) => n.id));
+  const hidden = new Set(full.nodes.map((n) => n.id).filter((id) => !kept.has(id)));
   d3.select('svg').selectAll('*').remove();
-  graphControl = pruned.nodes.length ? drawGraph(pruned, { onViewChange }) : null;
-  shown = graphControl ? { ...pruned, username } : null;
+  graphControl = pruned.nodes.length ? drawGraph(full, { onViewChange, hidden }) : null;
+  shown = graphControl ? { ...full, username } : null;
   $('share').hidden = !shown;
   pinned = null;
   viewTouched = false;
@@ -112,8 +117,26 @@ function updateLegend() {
   syncUrl();
 }
 
+// Picking a search result closes the list and leaves the cursor over the legend row
+// beneath it; that "hover" used to switch to one group straight away, which looked like
+// the selection vanishing. Hover counts again once the mouse moves away from the click.
+let legendBlock = null;
+function hoverBlocked(e) {
+if (!legendBlock) return false;
+if (Math.hypot(e.clientX - legendBlock.x, e.clientY - legendBlock.y) < 8) return true;
+legendBlock = null;
+return false;
+}
+
 for (const item of legendItems) {
-  item.onmouseenter = () => graphControl?.hasSelection() && graphControl.showOnly(item.dataset.cat);
+  item.onmouseenter = (e) => {
+    if (hoverBlocked(e)) return;
+    graphControl?.hasSelection() && graphControl.showOnly(item.dataset.cat);
+  };
+  // the cursor may already be on an item when the block lifts; moving on it counts as hover
+  item.onmousemove = (e) => {
+    if (legendBlock && !hoverBlocked(e)) item.onmouseenter(e);
+  };
   item.onmouseleave = () => graphControl?.hasSelection() && graphControl.showOnly(pinned);
   item.onclick = () => {
     if (!graphControl?.hasSelection()) return;
@@ -210,7 +233,10 @@ function renderResults() {
       li.onmousedown = (e) => e.preventDefault();
       // pick on click, not mousedown: closing the list on mousedown let the mouseup land
       // on the page behind it, and that click cleared the selection again
-      li.onclick = () => choose(id);
+      li.onclick = (e) => {
+        legendBlock = { x: e.clientX, y: e.clientY };
+        choose(id);
+      };
       return li;
     })
   );
