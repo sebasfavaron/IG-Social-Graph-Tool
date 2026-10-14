@@ -67,6 +67,55 @@
         margin: 0 4px 2px 8px;
         background: var(--c);
       }
+      .search {
+        position: relative;
+      }
+      .search input {
+        width: 110px;
+        padding: 3px 8px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: #f4f4f4;
+        font: inherit;
+        color: inherit;
+        outline: none;
+        transition: width 0.15s, border-color 0.15s;
+      }
+      .search input:focus {
+        width: 180px;
+        background: #fff;
+        border-color: #ccc;
+      }
+      .search ul {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        min-width: 100%;
+        margin: 0;
+        padding: 4px;
+        list-style: none;
+        background: #fff;
+        border: 1px solid #e3e3e3;
+        border-radius: 8px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+      }
+      .search ul[hidden] {
+        display: none;
+      }
+      .search li {
+        padding: 3px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .search li[aria-selected='true'] {
+        background: #f0f0f0;
+      }
+      .search li mark {
+        background: none;
+        font-weight: 600;
+        color: inherit;
+      }
       #empty[hidden] {
         display: none;
       }
@@ -85,6 +134,10 @@
     <header>
       <strong id="title">IG Social Graph</strong>
       <span id="counts" class="muted"></span>
+      <div class="search">
+        <input id="search" type="search" placeholder="Search  /" autocomplete="off" spellcheck="false" />
+        <ul id="results" role="listbox" hidden></ul>
+      </div>
       <label class="button">Open JSON…<input id="file" type="file" accept=".json,application/json" /></label>
       <span id="legend" class="legend muted">
         <span id="hint">click a name:</span

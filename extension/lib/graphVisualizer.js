@@ -23,8 +23,11 @@ export function drawGraph({ nodes, links }) {
 
   // Set up the SVG element and add the nodes and links
   const svg = d3.select('svg'),
-    width = svg.node().clientWidth || window.innerWidth,
-    height = svg.node().clientHeight || window.innerHeight;
+    viewSize = () => ({
+      w: svg.node().clientWidth || window.innerWidth,
+      h: svg.node().clientHeight || window.innerHeight,
+    }),
+    { w: width, h: height } = viewSize();
 
   const container = svg.append('g').attr('class', 'container');
 
@@ -250,15 +253,19 @@ export function drawGraph({ nodes, links }) {
     }
   }
 
-  node.on('click', function (event) {
-    d3.event.stopPropagation();
-    const { followers, followings, friendships } = getUsersFriendLinks(event.id);
+  function selectNode(username, element) {
+    const { followers, followings, friendships } = getUsersFriendLinks(username);
     selection = {
-      element: d3.select(this),
-      username: event.id,
+      element,
+      username,
       links: { follower: followers, following: followings, mutual: friendships },
     };
     paintSelection();
+  }
+
+  node.on('click', function (event) {
+    d3.event.stopPropagation();
+    selectNode(event.id, d3.select(this));
   });
   d3.select('body').on('click', () => {
     selection = null;
@@ -303,16 +310,22 @@ export function drawGraph({ nodes, links }) {
   for (let i = 0; i < ticks; i++) simulation.tick();
   render();
 
-  const xs = nodes.map((d) => d.x);
-  const ys = nodes.map((d) => d.y);
-  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  const fitK = Math.min(4, 0.9 * Math.min(width / (maxX - minX || 1), height / (maxY - minY || 1)));
-  svg.call(
-    zoom.transform,
-    d3.zoomIdentity
-      .translate(width / 2 - (fitK * (minX + maxX)) / 2, height / 2 - (fitK * (minY + maxY)) / 2)
-      .scale(fitK)
-  );
+  // A tab opened in the background can report a 0x0 size; fit once it has one.
+  function fitToView() {
+    const { w, h } = viewSize();
+    if (!w || !h) return window.addEventListener('resize', fitToView, { once: true });
+    const xs = nodes.map((d) => d.x);
+    const ys = nodes.map((d) => d.y);
+    const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const fitK = Math.min(4, 0.9 * Math.min(w / (maxX - minX || 1), h / (maxY - minY || 1)));
+    svg.call(
+      zoom.transform,
+      d3.zoomIdentity
+        .translate(w / 2 - (fitK * (minX + maxX)) / 2, h / 2 - (fitK * (minY + maxY)) / 2)
+        .scale(fitK)
+    );
+  }
+  fitToView();
 
   // Define drag behaviors for the nodes
   function dragstarted(d) {
@@ -336,6 +349,21 @@ export function drawGraph({ nodes, links }) {
     hasSelection: () => selection !== null,
     // null shows all three categories again
     showOnly: (category) => paintSelection(category),
+    ids: () => nodes.map((d) => d.id),
+    // Selects a person as if clicked and pans to them, zooming in enough to read names.
+    focus: (username) => {
+      const element = node.filter((d) => d.id === username);
+      if (element.empty()) return false;
+      selectNode(username, element);
+      const d = element.datum();
+      const k = Math.max(d3.zoomTransform(svg.node()).k, 2);
+      const { w, h } = viewSize();
+      svg
+        .transition()
+        .duration(600)
+        .call(zoom.transform, d3.zoomIdentity.translate(w / 2 - k * d.x, h / 2 - k * d.y).scale(k));
+      return true;
+    },
     counts: () =>
       selection &&
       Object.fromEntries(Object.entries(selection.links).map(([c, l]) => [c, l.length])),

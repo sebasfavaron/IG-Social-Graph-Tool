@@ -34,6 +34,7 @@ function show(graph) {
   graphControl = pruned.nodes.length ? drawGraph(pruned) : null;
   pinned = null;
   updateLegend();
+  closeSearch();
 }
 
 // Legend: hover a category to see only those links of the selected person; click to keep it.
@@ -81,6 +82,81 @@ $('file').onchange = async () => {
   const file = $('file').files[0];
   if (file) show(JSON.parse(await file.text()));
 };
+
+
+// Search: type part of a username, pick with arrows + Enter or a click; "/" focuses it.
+const search = $('search');
+const results = $('results');
+let matches = [];
+let active = 0;
+
+function closeSearch() {
+  results.hidden = true;
+  matches = [];
+}
+
+function renderResults() {
+  results.replaceChildren(
+    ...matches.map((id, i) => {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', String(i === active));
+      const q = search.value.trim().toLowerCase();
+      const at = id.toLowerCase().indexOf(q);
+      const mark = document.createElement('mark');
+      mark.textContent = id.slice(at, at + q.length);
+      li.append(id.slice(0, at), mark, id.slice(at + q.length));
+      li.onmousedown = (e) => {
+        e.preventDefault(); // keep focus so blur does not close the list first
+        choose(id);
+      };
+      return li;
+    })
+  );
+  results.hidden = matches.length === 0;
+}
+
+function choose(id) {
+  if (!graphControl?.focus(id)) return;
+  pinned = null;
+  updateLegend();
+  search.value = id;
+  closeSearch();
+  search.blur();
+}
+
+search.oninput = () => {
+  const q = search.value.trim().toLowerCase();
+  if (!q || !graphControl) return closeSearch();
+  const ids = graphControl.ids().filter((id) => id.toLowerCase().includes(q));
+  ids.sort((a, b) => a.toLowerCase().indexOf(q) - b.toLowerCase().indexOf(q) || a.length - b.length);
+  matches = ids.slice(0, 8);
+  active = 0;
+  renderResults();
+};
+search.onkeydown = (e) => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!matches.length) return;
+    active = (active + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length;
+    renderResults();
+  } else if (e.key === 'Enter' && matches.length) {
+    choose(matches[active]);
+  } else if (e.key === 'Escape') {
+    search.value = '';
+    closeSearch();
+    search.blur();
+  }
+};
+search.onblur = closeSearch;
+search.onfocus = () => search.value && search.oninput();
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && document.activeElement !== search) {
+    e.preventDefault();
+    search.focus();
+    search.select();
+  }
+});
 
 const { crawl } = await chrome.storage.local.get('crawl');
 if (crawl) show(toGraphJson(crawl));
