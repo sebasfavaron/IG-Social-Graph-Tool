@@ -84,13 +84,15 @@ $('file').onchange = async () => {
 };
 
 
-// Search: type part of a username, pick with arrows + Enter or a click; "/" focuses it.
+// Search: type part of a username; the highlighted match is selected in the graph as you
+// type, arrow or hover. Enter or a click keeps it and closes the list; "/" focuses it.
 const search = $('search');
 const results = $('results');
 let matches = [];
 let active = 0;
 
 function closeSearch() {
+  clearTimeout(previewTimer);
   results.hidden = true;
   matches = [];
 }
@@ -106,6 +108,7 @@ function renderResults() {
       const mark = document.createElement('mark');
       mark.textContent = id.slice(at, at + q.length);
       li.append(id.slice(0, at), mark, id.slice(at + q.length));
+      li.onmouseenter = () => setActive(i);
       li.onmousedown = (e) => {
         e.preventDefault(); // keep focus so blur does not close the list first
         choose(id);
@@ -114,6 +117,28 @@ function renderResults() {
     })
   );
   results.hidden = matches.length === 0;
+  preview();
+}
+
+function setActive(i) {
+  if (i === active) return;
+  active = i;
+  [...results.children].forEach((li, j) => li.setAttribute('aria-selected', String(j === active)));
+  preview();
+}
+
+// Debounced so fast typing or arrowing does not queue a pan per keystroke.
+let previewTimer = null;
+function preview() {
+  clearTimeout(previewTimer);
+  const id = matches[active];
+  if (!id) return;
+  previewTimer = setTimeout(() => {
+    if (graphControl?.focus(id)) {
+      pinned = null;
+      updateLegend();
+    }
+  }, 150);
 }
 
 function choose(id) {
@@ -138,8 +163,7 @@ search.onkeydown = (e) => {
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
     if (!matches.length) return;
-    active = (active + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length;
-    renderResults();
+    setActive((active + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length);
   } else if (e.key === 'Enter' && matches.length) {
     choose(matches[active]);
   } else if (e.key === 'Escape') {
