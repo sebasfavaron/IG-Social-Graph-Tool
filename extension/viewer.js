@@ -1,39 +1,16 @@
-import { toGraphJson } from './lib/crawler.js';
+import { toGraph } from './lib/crawler.js';
 import { drawGraph } from './lib/graphVisualizer.js';
 import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
-import { buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
+import { SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
 
-const PAGES_URL = 'https://sebasfavaron.github.io/IG-Social-Graph-Tool/';
 const INSTALL_URL = 'https://github.com/sebasfavaron/IG-Social-Graph-Tool#use-it-chrome-extension';
 
 const $ = (id) => document.getElementById(id);
 // Inside the extension the graph comes from the crawl; as a plain web page (GitHub
-// Pages) there is no chrome.storage and the page waits for a file or a share link.
+// Pages) there is no chrome.storage and the graph comes from a share link.
 const inExtension = typeof chrome !== 'undefined' && !!chrome.storage?.local;
 
-// Old exports sometimes miss nodes that only appear in links (d3's link force throws on
-// those) and repeat links (drawn twice, and they double the counts).
-function withAllNodes(graph) {
-  const ids = new Set(graph.nodes.map((n) => n.id));
-  const missing = [];
-  const seen = new Set();
-  const links = graph.links.filter(({ source, target }) => {
-    const key = `${source}\u0000${target}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  for (const { source, target } of links) {
-    for (const id of [source, target]) {
-      if (!ids.has(id)) {
-        ids.add(id);
-        missing.push({ id, group: 1 });
-      }
-    }
-  }
-  return { ...graph, nodes: [...graph.nodes, ...missing], links };
-}
 
 let shown = null; // what is on screen, for the share link
 let encoded = null; // `shown` packed for the link; filled in the background
@@ -45,7 +22,7 @@ const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 function show(graph, { encodedGraph = null } = {}) {
   const username = graph.username || graph.metadata?.loggedUsername;
   const total = graph.nodes.length;
-  const pruned = pruneLoneNodes(withAllNodes(graph));
+  const pruned = pruneLoneNodes(graph);
   document.title = username ? `@${username}'s circle` : 'IG Social Graph';
   $('title').textContent = username ? `@${username}` : 'IG Social Graph';
   $('counts').textContent =
@@ -55,7 +32,7 @@ function show(graph, { encodedGraph = null } = {}) {
       : '') +
     (graph.metadata?.complete === false ? ' · partial' : '');
   $('empty').hidden = pruned.nodes.length > 0;
-  // Same order whatever the source (file, crawl, link), so the layout comes out the same
+  // Same order whatever the source (crawl, link, example), so the layout comes out the same
   // and a view saved in a link lands on the same people.
   pruned.nodes.sort((a, b) => byId(a.id, b.id));
   pruned.links.sort((a, b) => byId(a.source, b.source) || byId(a.target, b.target));
@@ -158,17 +135,6 @@ document.querySelector('svg').addEventListener(
   true
 );
 
-async function openFile(file) {
-  if (!file) return;
-  try {
-    const graph = JSON.parse(await file.text());
-    if (!Array.isArray(graph.nodes) || !Array.isArray(graph.links)) throw new Error('no nodes/links in it');
-    show(graph);
-  } catch (err) {
-    alert(`Could not open ${file.name}: ${err.message}`);
-  }
-}
-$('file').onchange = () => openFile($('file').files[0]);
 // structuredClone: d3 replaces link endpoints with node objects, so each run needs fresh data
 $('example').onclick = () => show(structuredClone(EXAMPLE_GRAPH));
 
@@ -180,7 +146,7 @@ async function openShareHash() {
   try {
     if (state.g !== encoded) show(await decodeGraph(state.g), { encodedGraph: state.g });
   } catch (err) {
-    alert(`This share link looks cut off or broken (${err.message}). Ask for it again, or for the JSON file.`);
+    alert(`This share link looks cut off or broken (${err.message}). Ask for it again.`);
     return false;
   }
   if (!graphControl) return true;
@@ -202,7 +168,7 @@ window.addEventListener('hashchange', openShareHash); // someone pasted or edite
 
 $('share').onclick = async () => {
   if (!shown) return;
-  const base = inExtension ? PAGES_URL : location.origin + location.pathname;
+  const base = inExtension ? SHARE_BASE_URL : location.origin + location.pathname;
   const url = base + currentHash(encoded || (await encodeGraph(shown)));
   const label = $('share').textContent;
   try {
@@ -314,13 +280,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Dropping a JSON export anywhere on the page opens it, same as "Open JSON…".
-document.addEventListener('dragover', (e) => e.preventDefault());
-document.addEventListener('drop', (e) => {
-  e.preventDefault();
-  openFile(e.dataTransfer.files[0]);
-});
-
 if (!inExtension) {
   const link = Object.assign(document.createElement('a'), {
     href: INSTALL_URL,
@@ -329,13 +288,13 @@ if (!inExtension) {
     textContent: 'IG Social Graph extension',
   });
   $('empty-text').replaceChildren(
-    'Drop a JSON export from the ',
+    'Open a share link from the ',
     link,
-    ' here, or use "Open JSON…". The file stays in your browser.'
+    ' to see a graph here.'
   );
 }
 if (!(await openShareHash())) {
   const { crawl } = inExtension ? await chrome.storage.local.get('crawl') : {};
-  if (crawl) show(toGraphJson(crawl));
+  if (crawl) show(toGraph(crawl));
   else $('empty').hidden = false;
 }

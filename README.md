@@ -8,13 +8,13 @@ Draws who-follows-whom among the people who follow you on Instagram, as an inter
 2. Log in to [instagram.com](https://www.instagram.com) in that browser.
 3. Click the extension icon → **Start**. It lists your followers, then asks Instagram, for each of them, which accounts you follow also follow them.
 4. Leave it running. Progress and time left show in the popup; the icon badge shows the percentage. You can close the popup, pause and resume, or restart the browser — progress is saved.
-5. **View graph** opens the graph in a new tab. **Download JSON** exports it, to keep or to share.
+5. **View graph** opens the graph in a new tab. **Copy share link** copies a link to it.
 
-### View a JSON export without the extension
+### Share links
 
-Open [sebasfavaron.github.io/IG-Social-Graph-Tool](https://sebasfavaron.github.io/IG-Social-Graph-Tool/) and drop the file on the page, or use **Open JSON…**. The file is read in your browser and never uploaded. It's the same viewer as the extension's, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it. Exports from the old bookmarklet open too.
+A share link carries the graph inside itself, after the `#`, which browsers never send to a server, so nothing is stored anywhere: ~15 000 characters for 462 people and 9 661 connections. It opens on [sebasfavaron.github.io/IG-Social-Graph-Tool](https://sebasfavaron.github.io/IG-Social-Graph-Tool/), no extension needed. The link also keeps who is selected, which group is kept on, and the zoom; on that page the address bar always holds the current link, so copying it works too. Anyone who gets the link sees those usernames and who follows whom.
 
-**Copy share link** (in the viewer, both here and in the extension) packs the graph on screen into the link itself, after the `#`, which browsers never send to a server. Nothing is stored anywhere; ~15 000 characters for 462 people and 9 661 connections. The link also keeps who is selected, which group is kept on, and the zoom, and on this page the address bar always holds that link, so copying it works too. Anyone who gets the link sees those usernames and who follows whom, so share it like you would the JSON.
+The page is the extension's viewer, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it.
 
 Everything stays in your browser: requests go from an instagram.com tab with your own session, and the data lives in the extension's local storage.
 
@@ -34,7 +34,7 @@ Everything stays in your browser: requests go from an instagram.com tab with you
 
 ### Legacy
 
-The bookmarklet (`scripts/bookmarklet-download-ig-data.js`) no longer works: Instagram blocks scripts loaded from github.io, and the GraphQL `query_hash` endpoint and `window._sharedData` it relied on are gone. The Next.js site in this repo still visualizes JSON exports. If a graph shows up stuck in a corner there, run [addMissingNodes](./scripts/graph-scripts/addMissingNodes.js) on the file; the extension's viewer handles this itself.
+The bookmarklet (`scripts/bookmarklet-download-ig-data.js`) no longer works: Instagram blocks scripts loaded from github.io, and the GraphQL `query_hash` endpoint and `window._sharedData` it relied on are gone. The Next.js site and `scripts/graph-scripts` still read the bookmarklet's JSON files; the extension and the share page no longer use JSON files.
 
 ### Credits (tutorials that helped me hack this together):
 

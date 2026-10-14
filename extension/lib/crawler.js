@@ -164,8 +164,8 @@ function handleNotOk(state, verdict, skipCurrent) {
   return { wait: state.settings.delaySec * 1000 * 2 };
 }
 
-// Same shape the web visualizer and the graph-scripts already read.
-export function toGraphJson(state) {
+// The graph the viewer draws and the share link packs: { username, nodes, links }.
+export function toGraph(state) {
   const seen = new Set();
   const links = [];
   for (const [source, target] of state.links) {

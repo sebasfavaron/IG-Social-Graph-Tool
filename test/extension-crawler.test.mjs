@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, step, toGraphJson, classify } from '../extension/lib/crawler.js';
+import { initialState, step, toGraph, classify } from '../extension/lib/crawler.js';
 import { pruneLoneNodes } from '../extension/lib/prune.js';
 
 // Fake Instagram: me(1) followed by a(2), b(3), c(4), shop(5). Followers paginate 2 per page.
@@ -51,7 +51,7 @@ test('crawls followers with pagination and builds follower->me and mutual->follo
   const state = initialState(me);
   const api = fakeApi();
   assert.deepEqual(await runToEnd(state, api), { done: true });
-  const g = toGraphJson(state);
+  const g = toGraph(state);
   const edges = g.links.map((l) => `${l.source}>${l.target}`).sort();
   assert.deepEqual(edges, ['a>b', 'a>c', 'a>me', 'b>a', 'b>c', 'b>me', 'c>a', 'c>me', 'shop>me'].sort());
   assert.equal(g.nodes.length, 5);
@@ -64,7 +64,7 @@ test('pruning hides accounts that only follow me', () => {
   const state = initialState(me);
   state.links = [['a', 'me'], ['b', 'me'], ['a', 'b'], ['shop', 'me']];
   state.nodes = { me: true, a: true, b: true, shop: true };
-  const pruned = pruneLoneNodes(toGraphJson(state));
+  const pruned = pruneLoneNodes(toGraph(state));
   assert.deepEqual(pruned.nodes.map((n) => n.id).sort(), ['a', 'b', 'me']);
 });
 
@@ -76,7 +76,7 @@ test('rate limit returns cooldown and does not lose the cursor', async () => {
   assert.deepEqual(await step(state, api), { cooldown: true });
   assert.equal(state.followersCursor, cursor);
   assert.deepEqual(await runToEnd(state, api), { done: true });
-  assert.equal(toGraphJson(state).links.length, 9);
+  assert.equal(toGraph(state).links.length, 9);
 });
 
 test('logged out and checkpoint are fatal', () => {
@@ -90,7 +90,7 @@ test('a follower that keeps failing is skipped after 3 tries, not retried foreve
   const api = fakeApi({ failOn: (p) => (p.includes('/2/mutual_followers') ? { status: 500, json: null } : null) });
   assert.deepEqual(await runToEnd(state, api), { done: true });
   assert.equal(api.calls.filter((p) => p.includes('/2/mutual_followers')).length, 3);
-  assert.ok(!toGraphJson(state).links.some((l) => l.target === 'a' && l.source !== 'a'));
+  assert.ok(!toGraph(state).links.some((l) => l.target === 'a' && l.source !== 'a'));
 });
 
 test('maxFollowers limits the mutuals phase', async () => {

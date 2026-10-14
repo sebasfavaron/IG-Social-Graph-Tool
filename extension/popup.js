@@ -1,4 +1,6 @@
-import { toGraphJson } from './lib/crawler.js';
+import { toGraph } from './lib/crawler.js';
+import { pruneLoneNodes } from './lib/prune.js';
+import { SHARE_BASE_URL, buildHash, encodeGraph } from './lib/share.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,7 +42,7 @@ function render(s) {
   $('start').textContent = has ? 'Start over' : 'Start';
   $('resume').hidden = !has || !['paused', 'error', 'cooldown'].includes(s.status);
   $('pause').hidden = !has || !['running', 'cooldown'].includes(s.status);
-  $('view').disabled = $('download').disabled = !has || s.links === 0;
+  $('view').disabled = $('share').disabled = !has || s.links === 0;
   $('error').hidden = !s?.error || s.status === 'running';
   $('error').textContent = s?.error || '';
   $('error').style.color = s?.status === 'cooldown' ? 'var(--muted)' : '';
@@ -94,13 +96,18 @@ $('reset').onclick = () => {
   if (confirm('Delete everything collected so far?')) act(() => send('reset'));
 };
 $('view').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
-$('download').onclick = async () => {
+// Same link the viewer's button makes: the graph as shown (loners hidden), on the public page.
+$('share').onclick = async () => {
   const { crawl } = await chrome.storage.local.get('crawl');
-  const graph = toGraphJson(crawl);
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(graph, null, 2)], { type: 'application/json' }));
-  a.download = `ig-social-data-${crawl.viewer.username}.json`;
-  a.click();
+  const url = SHARE_BASE_URL + buildHash({ g: await encodeGraph(pruneLoneNodes(toGraph(crawl))) });
+  const label = $('share').textContent;
+  try {
+    await navigator.clipboard.writeText(url);
+    $('share').textContent = `Copied · ${Math.round(url.length / 1000)}k characters`;
+  } catch (_) {
+    prompt('Copy this link:', url);
+  }
+  setTimeout(() => ($('share').textContent = label), 2500);
 };
 
 chrome.storage.onChanged.addListener(() => act(() => send('getState')));

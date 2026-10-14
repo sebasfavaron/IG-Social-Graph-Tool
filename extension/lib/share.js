@@ -11,6 +11,8 @@
 // then deflate-raw and base64url. ~15k characters for 462 people / 9 661 links.
 
 export const SHARE_PREFIX = '#g=';
+// Where share links point, also when made from inside the extension.
+export const SHARE_BASE_URL = 'https://sebasfavaron.github.io/IG-Social-Graph-Tool/';
 
 async function pipe(bytes, stream) {
   const out = await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer();
