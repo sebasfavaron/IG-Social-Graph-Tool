@@ -229,7 +229,10 @@ async function setStatus(status) {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   await load();
   if (!state) return;
-  if (alarm.name === 'cooldown' && state.status === STATUS.COOLDOWN) {
+  // The watchdog also ends an expired cooldown: Chrome can drop the 'cooldown' alarm when
+  // the extension is reloaded or updated, which left the crawl waiting forever.
+  const cooldownOver = state.status === STATUS.COOLDOWN && Date.now() >= (state.cooldownUntil || 0);
+  if (state.status === STATUS.COOLDOWN && (alarm.name === 'cooldown' || cooldownOver)) {
     state.error = null;
     await setStatus(STATUS.RUNNING);
   }
