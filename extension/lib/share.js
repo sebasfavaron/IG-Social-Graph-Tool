@@ -209,7 +209,12 @@ export async function decodeGraph(encoded) {
 
 // The rest of the view rides along after the graph:
 //   #g=<graph>&p=<selected username>&c=<follower|following|mutual>&v=<x>,<y>,<zoom>
-//   &n=<name of group 1>|<name of group 2>|…   (empty = unnamed; groups are numbered by size)
+//   &n=<name of group 1>,<name of group 2>,…   (empty = unnamed; groups are numbered by size)
+//
+// Every character here is one RFC 3986 allows in a fragment. iOS (share sheet, Messages,
+// links opened from other apps) percent-escapes anything else: names used to be joined with
+// "|", which arrived as %7C and read as one long name. "," is allowed, and inside a name
+// encodeURIComponent always escapes it, so a raw "," is only ever the separator.
 // v is the view centre relative to the layout's centroid; it is left out until the
 // viewer moves the view by hand, so a fresh link fits whatever screen opens it.
 export const MAX_GROUP_NAME = 30;
@@ -222,7 +227,7 @@ export function buildHash({ g, p, c, v, n }) {
   if (n?.some(Boolean)) {
     const names = n.map((name) => encodeURIComponent((name || '').slice(0, MAX_GROUP_NAME)));
     while (names.length && !names[names.length - 1]) names.pop();
-    parts.push(`n=${names.join('|')}`);
+    parts.push(`n=${names.join(',')}`);
   }
   return `#${parts.join('&')}`;
 }
@@ -241,11 +246,11 @@ export function parseHash(hash) {
   };
 }
 
-// Read raw, not through URLSearchParams: it would decode an escaped "|" inside a name
+// Read raw, not through URLSearchParams: it would decode an escaped "," inside a name
 // before the split.
 function groupNames(hash) {
   const raw = hash.slice(1).split('&').find((part) => part.startsWith('n='));
-  return raw ? raw.slice(2).split('|').map((name) => safeDecode(name).slice(0, MAX_GROUP_NAME)) : null;
+  return raw ? raw.slice(2).split(',').map((name) => safeDecode(name).slice(0, MAX_GROUP_NAME)) : null;
 }
 
 function safeDecode(text) {

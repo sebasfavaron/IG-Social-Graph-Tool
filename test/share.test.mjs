@@ -89,3 +89,15 @@ test('the owner is restored and their links come back from the per-person bits',
   assert.equal(decoded.username, 'me');
   assert.deepEqual(edges(decoded), edges(graph));
 });
+
+// What iOS does to a link on its way through the share sheet or Messages: escape every
+// character RFC 3986 does not allow in a fragment.
+const iosEscape = (hash) => '#' + hash.slice(1).replace(/[^A-Za-z0-9\-._~!$&'()*+,;=:@/?%]/gu, (c) => encodeURIComponent(c));
+
+test('group names survive iOS escaping the link', async () => {
+  const { buildHash, parseHash } = await import('../extension/lib/share.js');
+  const names = ['School | 2010', 'Work, co & más', '', 'Família 🎉'];
+  const hash = buildHash({ g: 'abc_-', p: 'jose.favaron', c: 'mutual', v: { x: -12, y: 31, k: 2.46 }, n: names });
+  assert.equal(iosEscape(hash), hash, 'the link has a character iOS would rewrite');
+  assert.deepEqual(parseHash(iosEscape(hash)).n, names);
+});
