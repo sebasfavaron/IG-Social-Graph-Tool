@@ -2,8 +2,15 @@ import { toGraphJson } from './lib/crawler.js';
 import { drawGraph } from './lib/graphVisualizer.js';
 import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
+import { SHARE_PREFIX, decodeGraph, encodeGraph } from './lib/share.js';
+
+const PAGES_URL = 'https://sebasfavaron.github.io/IG-Social-Graph-Tool/';
+const INSTALL_URL = 'https://github.com/sebasfavaron/IG-Social-Graph-Tool#use-it-chrome-extension';
 
 const $ = (id) => document.getElementById(id);
+// Inside the extension the graph comes from the crawl; as a plain web page (GitHub
+// Pages) there is no chrome.storage and the page waits for a file or a share link.
+const inExtension = typeof chrome !== 'undefined' && !!chrome.storage?.local;
 
 // Old exports sometimes miss nodes that only appear in links (d3's link force throws on
 // those) and repeat links (drawn twice, and they double the counts).
@@ -28,6 +35,8 @@ function withAllNodes(graph) {
   return { ...graph, nodes: [...graph.nodes, ...missing], links };
 }
 
+let shown = null; // what is on screen, for the share link
+
 function show(graph) {
   const username = graph.username || graph.metadata?.loggedUsername;
   const total = graph.nodes.length;
@@ -43,6 +52,8 @@ function show(graph) {
   $('empty').hidden = pruned.nodes.length > 0;
   d3.select('svg').selectAll('*').remove();
   graphControl = pruned.nodes.length ? drawGraph(pruned) : null;
+  shown = graphControl ? { ...pruned, username } : null;
+  $('share').hidden = !shown;
   pinned = null;
   updateLegend();
   closeSearch();
@@ -105,6 +116,7 @@ async function openFile(file) {
   try {
     const graph = JSON.parse(await file.text());
     if (!Array.isArray(graph.nodes) || !Array.isArray(graph.links)) throw new Error('no nodes/links in it');
+    clearShareHash();
     show(graph);
   } catch (err) {
     alert(`Could not open ${file.name}: ${err.message}`);
@@ -112,7 +124,42 @@ async function openFile(file) {
 }
 $('file').onchange = () => openFile($('file').files[0]);
 // structuredClone: d3 replaces link endpoints with node objects, so each run needs fresh data
-$('example').onclick = () => show(structuredClone(EXAMPLE_GRAPH));
+$('example').onclick = () => {
+  clearShareHash();
+  show(structuredClone(EXAMPLE_GRAPH));
+};
+
+// Share: the graph on screen travels inside the link (after "#", never sent to a server).
+// From the extension the link points at the public page, which can open it.
+function clearShareHash() {
+  if (location.hash.startsWith(SHARE_PREFIX)) history.replaceState(null, '', location.pathname + location.search);
+}
+
+async function openShareHash() {
+  if (!location.hash.startsWith(SHARE_PREFIX)) return false;
+  try {
+    show(await decodeGraph(location.hash.slice(SHARE_PREFIX.length)));
+  } catch (err) {
+    alert(`This share link looks cut off or broken (${err.message}). Ask for it again, or for the JSON file.`);
+    return false;
+  }
+  return true;
+}
+window.addEventListener('hashchange', openShareHash);
+
+$('share').onclick = async () => {
+  if (!shown) return;
+  const base = inExtension ? PAGES_URL : location.origin + location.pathname;
+  const url = base + SHARE_PREFIX + (await encodeGraph(shown));
+  const label = $('share').textContent;
+  try {
+    await navigator.clipboard.writeText(url);
+    $('share').textContent = `Copied · ${Math.round(url.length / 1000)}k characters`;
+  } catch (_) {
+    prompt('Copy this link:', url);
+  }
+  setTimeout(() => ($('share').textContent = label), 2500);
+};
 
 
 // Search: type part of a username; the highlighted match is selected in the graph as you
@@ -221,13 +268,21 @@ document.addEventListener('drop', (e) => {
   openFile(e.dataTransfer.files[0]);
 });
 
-// Inside the extension the graph comes from the crawl; as a plain web page (GitHub
-// Pages) there is no chrome.storage and the page waits for a file.
-const inExtension = typeof chrome !== 'undefined' && !!chrome.storage?.local;
 if (!inExtension) {
-  $('empty-text').textContent =
-    'Drop an IG Social Graph JSON export here, or use "Open JSON…". The file stays in your browser.';
+  const link = Object.assign(document.createElement('a'), {
+    href: INSTALL_URL,
+    target: '_blank',
+    rel: 'noopener',
+    textContent: 'IG Social Graph extension',
+  });
+  $('empty-text').replaceChildren(
+    'Drop a JSON export from the ',
+    link,
+    ' here, or use "Open JSON…". The file stays in your browser.'
+  );
 }
-const { crawl } = inExtension ? await chrome.storage.local.get('crawl') : {};
-if (crawl) show(toGraphJson(crawl));
-else $('empty').hidden = false;
+if (!(await openShareHash())) {
+  const { crawl } = inExtension ? await chrome.storage.local.get('crawl') : {};
+  if (crawl) show(toGraphJson(crawl));
+  else $('empty').hidden = false;
+}

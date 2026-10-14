@@ -135,8 +135,12 @@
         text-align: center;
         pointer-events: none;
       }
-      #empty button {
+      #empty button,
+      #empty a {
         pointer-events: auto;
+      }
+      #empty a {
+        color: inherit;
       }
     </style>
     <script src="vendor/d3.v4.min.js"></script>
@@ -150,6 +154,7 @@
         <ul id="results" role="listbox" hidden></ul>
       </div>
       <label class="button">Open JSON…<input id="file" type="file" accept=".json,application/json" /></label>
+      <button id="share" hidden title="Anyone with the link can see these usernames and who follows whom">Copy share link</button>
       <span id="legend" class="legend muted">
         <span id="hint">click a name to see who follows them</span
         ><span data-cat="follower" hidden style="--c: #ca2d2d">follower</span
