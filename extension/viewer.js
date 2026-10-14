@@ -41,11 +41,12 @@ function show(graph) {
 let graphControl = null;
 let pinned = null;
 const legendItems = [...document.querySelectorAll('[data-cat]')];
-// Labels name the selected person, so the direction of each group reads as a sentence.
+// Labels name the selected person and put the count where a sentence would, so the
+// direction of each group reads naturally: "9 follow @x", "@x follows 5".
 const LABELS = {
-  follower: (name) => `follow @${name}`,
-  following: (name) => `@${name} follows`,
-  mutual: () => 'follow each other',
+  follower: (name, n) => `${n} ${n === 1 ? 'follows' : 'follow'} @${name}`,
+  following: (name, n) => `@${name} follows ${n}`,
+  mutual: (name, n) => (n ? `@${name} and ${n} follow each other` : 'no mutual follows'),
 };
 const shorten = (name) => (name.length > 16 ? `${name.slice(0, 15)}…` : name);
 
@@ -59,8 +60,8 @@ function updateLegend() {
     const cat = item.dataset.cat;
     item.hidden = !counts;
     if (!counts) continue;
-    item.textContent = `${LABELS[cat](shorten(selected))} ${counts[cat]}`;
-    item.title = LABELS[cat](selected);
+    item.textContent = LABELS[cat](shorten(selected), counts[cat]);
+    item.title = LABELS[cat](selected, counts[cat]);
     item.classList.toggle('pinned', pinned === cat);
   }
 }
