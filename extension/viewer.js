@@ -4,11 +4,19 @@ import { pruneLoneNodes } from './lib/prune.js';
 
 const $ = (id) => document.getElementById(id);
 
-// Old exports sometimes miss nodes that only appear in links; d3's link force throws on those.
+// Old exports sometimes miss nodes that only appear in links (d3's link force throws on
+// those) and repeat links (drawn twice, and they double the counts).
 function withAllNodes(graph) {
   const ids = new Set(graph.nodes.map((n) => n.id));
   const missing = [];
-  for (const { source, target } of graph.links) {
+  const seen = new Set();
+  const links = graph.links.filter(({ source, target }) => {
+    const key = `${source}\u0000${target}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  for (const { source, target } of links) {
     for (const id of [source, target]) {
       if (!ids.has(id)) {
         ids.add(id);
@@ -16,7 +24,7 @@ function withAllNodes(graph) {
       }
     }
   }
-  return { ...graph, nodes: [...graph.nodes, ...missing] };
+  return { ...graph, nodes: [...graph.nodes, ...missing], links };
 }
 
 function show(graph) {
@@ -89,10 +97,17 @@ document.querySelector('svg').addEventListener(
   true
 );
 
-$('file').onchange = async () => {
-  const file = $('file').files[0];
-  if (file) show(JSON.parse(await file.text()));
-};
+async function openFile(file) {
+  if (!file) return;
+  try {
+    const graph = JSON.parse(await file.text());
+    if (!Array.isArray(graph.nodes) || !Array.isArray(graph.links)) throw new Error('no nodes/links in it');
+    show(graph);
+  } catch (err) {
+    alert(`Could not open ${file.name}: ${err.message}`);
+  }
+}
+$('file').onchange = () => openFile($('file').files[0]);
 
 
 // Search: type part of a username; the highlighted match is selected in the graph as you
@@ -194,6 +209,20 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-const { crawl } = await chrome.storage.local.get('crawl');
+// Dropping a JSON export anywhere on the page opens it, same as "Open JSON…".
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  openFile(e.dataTransfer.files[0]);
+});
+
+// Inside the extension the graph comes from the crawl; as a plain web page (GitHub
+// Pages) there is no chrome.storage and the page waits for a file.
+const inExtension = typeof chrome !== 'undefined' && !!chrome.storage?.local;
+if (!inExtension) {
+  $('empty').textContent =
+    'Drop an IG Social Graph JSON export here, or use "Open JSON…". The file stays in your browser.';
+}
+const { crawl } = inExtension ? await chrome.storage.local.get('crawl') : {};
 if (crawl) show(toGraphJson(crawl));
 else $('empty').hidden = false;

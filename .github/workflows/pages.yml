@@ -1,0 +1,40 @@
+# Publishes the extension's graph viewer as a static page where anyone can open a
+# JSON export: https://sebasfavaron.github.io/IG-Social-Graph-Tool/
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['extension/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble site from the extension's viewer
+        run: |
+          mkdir -p _site
+          cp extension/viewer.html _site/index.html
+          cp extension/viewer.js _site/
+          cp -R extension/lib extension/vendor _site/
+          cp extension/icon128.png _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

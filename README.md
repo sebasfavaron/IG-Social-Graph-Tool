@@ -8,7 +8,11 @@ Draws who-follows-whom among the people who follow you on Instagram, as an inter
 2. Log in to [instagram.com](https://www.instagram.com) in that browser.
 3. Click the extension icon → **Start**. It lists your followers, then asks Instagram, for each of them, which accounts you follow also follow them.
 4. Leave it running. Progress and time left show in the popup; the icon badge shows the percentage. You can close the popup, pause and resume, or restart the browser — progress is saved.
-5. **View graph** opens the graph in a new tab. **Download JSON** exports it in the format the [website](https://ig-social-graph.netlify.app/) and the [`graph-scripts`](./scripts/graph-scripts) read.
+5. **View graph** opens the graph in a new tab. **Download JSON** exports it, to keep or to share.
+
+### View a JSON export without the extension
+
+Open [sebasfavaron.github.io/IG-Social-Graph-Tool](https://sebasfavaron.github.io/IG-Social-Graph-Tool/) and drop the file on the page, or use **Open JSON…**. The file is read in your browser and never uploaded. It's the same viewer as the extension's, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it. Exports from the old bookmarklet open too.
 
 Everything stays in your browser: requests go from an instagram.com tab with your own session, and the data lives in the extension's local storage.
 
