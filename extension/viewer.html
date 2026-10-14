@@ -1,20 +1,108 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>IG Social Graph</title>
     <link rel="icon" href="icon128.png" />
+    <script>
+      // apply a saved theme before first paint, so dark mode does not flash white
+      try {
+        const saved = localStorage.getItem('theme');
+        if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+      } catch (_) {}
+    </script>
     <style>
+      /* Colours. Directions use Okabe-Ito orange / blue, which stay apart for red-green
+         colour blindness; "follow each other" is a heavier neutral line. Group colours are
+         read by the canvas through --g1..--g6. */
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: rgba(255, 255, 255, 0.94);
+        --surface-solid: #ffffff;
+        --fg: #1b1b1b;
+        --muted: #5f6368;
+        --line: #e3e3e3;
+        --chip: #f6f6f6;
+        --chip-hover: #ececec;
+        --accent: #0b63ce;
+        --focus: #0072b2;
+        --link: #868585;
+        --node: #4a4a4a;
+        --follower: #e69f00;
+        --following: #0072b2;
+        --mutual: #222222;
+        --g1: #d1495b;
+        --g2: #2e86ab;
+        --g3: #3e9e62;
+        --g4: #e8a33d;
+        --g5: #8e6bbf;
+        --g6: #4fb0ae;
+        --glow: 0;
+      }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --surface: rgba(22, 27, 34, 0.9);
+        --surface-solid: #161b22;
+        --fg: #e6edf3;
+        --muted: #9198a1;
+        --line: #30363d;
+        --chip: #161b22;
+        --chip-hover: #21262d;
+        --accent: #79c0ff;
+        --focus: #79c0ff;
+        --link: #3d6fa8;
+        --node: #8b949e;
+        --follower: #ffb000;
+        --following: #4fb3ff;
+        --mutual: #f0f6fc;
+        --g1: #ff7b72;
+        --g2: #79c0ff;
+        --g3: #7ee787;
+        --g4: #ffa657;
+        --g5: #d2a8ff;
+        --g6: #56d4dd;
+        --glow: 1;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          color-scheme: dark;
+          --bg: #0d1117;
+          --surface: rgba(22, 27, 34, 0.9);
+          --surface-solid: #161b22;
+          --fg: #e6edf3;
+          --muted: #9198a1;
+          --line: #30363d;
+          --chip: #161b22;
+          --chip-hover: #21262d;
+          --accent: #79c0ff;
+          --focus: #79c0ff;
+          --link: #3d6fa8;
+          --node: #8b949e;
+          --follower: #ffb000;
+          --following: #4fb3ff;
+          --mutual: #f0f6fc;
+          --g1: #ff7b72;
+          --g2: #79c0ff;
+          --g3: #7ee787;
+          --g4: #ffa657;
+          --g5: #d2a8ff;
+          --g6: #56d4dd;
+          --glow: 1;
+        }
+      }
+
       html,
       body {
         margin: 0;
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #fff;
+        background: var(--bg);
         font: 13px/1.4 system-ui, sans-serif;
-        color: #1b1b1b;
+        color: var(--fg);
       }
       #graph {
         display: block;
@@ -22,98 +110,95 @@
         height: 100vh;
         touch-action: none;
       }
+      :focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 2px;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      button {
+        padding: 4px 9px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--surface-solid);
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover {
+        background: var(--chip-hover);
+      }
+      a {
+        color: var(--accent);
+      }
+      .panel-box {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        backdrop-filter: blur(8px);
+      }
+
+      /* ---- top bar ---- */
       header {
         position: fixed;
         top: 10px;
         left: 10px;
         display: flex;
         flex-wrap: wrap;
-        gap: 4px 10px;
+        gap: 6px 10px;
         align-items: center;
         max-width: calc(100vw - 42px);
         padding: 6px 10px;
-        background: rgba(255, 255, 255, 0.9);
-        border: 1px solid #e3e3e3;
-        border-radius: 8px;
       }
-      header > *,
-      .legend [data-cat] {
+      header > * {
         white-space: nowrap;
       }
-      header .muted {
-        color: #6b6b6b;
+      .muted {
+        color: var(--muted);
       }
-      button,
-      label.button {
-        padding: 4px 8px;
-        border-radius: 6px;
-        border: 1px solid #ccc;
-        background: #fff;
-        font: inherit;
-        cursor: pointer;
+      #theme {
+        padding: 4px 7px;
+        line-height: 1;
       }
-      label.button input {
-        display: none;
-      }
-      .legend [data-cat] {
-        padding: 2px 6px 2px 0;
-        border-radius: 4px;
-        cursor: default;
-      }
-      .legend.active [data-cat] {
-        cursor: pointer;
-        color: #1b1b1b;
-      }
-      .legend.active [data-cat]:hover,
-      .legend [data-cat].pinned {
-        background: #f0f0f0;
-      }
-      #profile {
-        color: inherit;
-        white-space: nowrap;
-      }
-      #profile[hidden] {
-        display: none;
-      }
-      .legend [data-cat]::before {
-        content: '';
-        display: inline-block;
-        width: 10px;
-        height: 3px;
-        margin: 0 4px 2px 8px;
-        background: var(--c);
-      }
+
+      /* ---- search ---- */
       .search {
         position: relative;
       }
       .search input {
-        width: 110px;
-        padding: 3px 8px;
+        width: 120px;
+        padding: 4px 8px;
         border: 1px solid transparent;
         border-radius: 6px;
-        background: #f4f4f4;
+        background: var(--chip);
         font: inherit;
         color: inherit;
-        outline: none;
         transition: width 0.15s, border-color 0.15s;
       }
       .search input:focus {
-        width: 180px;
-        background: #fff;
-        border-color: #ccc;
+        width: 190px;
+        background: var(--surface-solid);
+        border-color: var(--line);
       }
       .search ul {
         position: absolute;
+        z-index: 3;
         top: calc(100% + 6px);
         left: 0;
         min-width: 100%;
         margin: 0;
         padding: 4px;
         list-style: none;
-        background: #fff;
-        border: 1px solid #e3e3e3;
+        background: var(--surface-solid);
+        border: 1px solid var(--line);
         border-radius: 8px;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
       }
       .search ul[hidden] {
         display: none;
@@ -125,13 +210,169 @@
         white-space: nowrap;
       }
       .search li[aria-selected='true'] {
-        background: #f0f0f0;
+        background: var(--chip-hover);
       }
       .search li mark {
         background: none;
         font-weight: 600;
         color: inherit;
       }
+
+      /* ---- person panel ---- */
+      #panel {
+        position: fixed;
+        z-index: 2;
+        top: 64px;
+        right: 10px;
+        bottom: 10px;
+        width: 300px;
+        overflow: auto;
+        padding: 14px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+      }
+      #panel[hidden] {
+        display: none;
+      }
+      .who {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .avatar {
+        flex: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        font-size: 17px;
+        color: #fff;
+        background: linear-gradient(135deg, var(--follower), #cc79a7 55%, var(--following));
+      }
+      .who h2 {
+        margin: 0;
+        font-size: 15px;
+        word-break: break-all;
+      }
+      #panel-close {
+        margin-left: auto;
+        align-self: flex-start;
+        border: 0;
+        background: none;
+        font-size: 20px;
+        line-height: 1;
+        padding: 2px 6px;
+      }
+      #panel section {
+        margin-top: 12px;
+      }
+      .group-toggle {
+        display: flex;
+        width: 100%;
+        gap: 8px;
+        align-items: center;
+        border: 0;
+        background: none;
+        padding: 4px 6px;
+        text-align: left;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .group-toggle[aria-pressed='true'] {
+        background: var(--chip-hover);
+        color: var(--fg);
+      }
+      .swatch {
+        flex: none;
+        width: 16px;
+        height: 3px;
+        border-radius: 2px;
+        background: var(--c);
+      }
+      [data-cat='mutual'] .swatch {
+        height: 5px;
+      }
+      #panel ul {
+        list-style: none;
+        margin: 6px 0 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      #panel li button {
+        border-radius: 999px;
+        padding: 3px 9px;
+        background: var(--chip);
+      }
+      #panel li button:hover {
+        background: var(--chip-hover);
+      }
+      .more {
+        color: var(--muted);
+      }
+      .none {
+        color: var(--muted);
+        margin: 4px 6px 0;
+      }
+
+      /* ---- friend groups key ---- */
+      #groups {
+        position: fixed;
+        left: 10px;
+        bottom: 10px;
+        padding: 8px 10px;
+        font-size: 12px;
+        max-width: 210px;
+      }
+      #groups[hidden] {
+        display: none;
+      }
+      #groups h2 {
+        font-size: 12px;
+        margin: 0 0 4px;
+      }
+      #groups ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      #groups li {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 1px 0;
+      }
+      #groups .dot {
+        flex: none;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--c);
+      }
+      #groups input {
+        min-width: 0;
+        flex: 1;
+        padding: 1px 4px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+      }
+      #groups input:hover {
+        border-color: var(--line);
+      }
+      #groups input:focus {
+        border-color: var(--line);
+        background: var(--surface-solid);
+      }
+      #groups .n {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
       #empty[hidden] {
         display: none;
       }
@@ -140,7 +381,7 @@
         inset: 0;
         display: grid;
         place-items: center;
-        color: #6b6b6b;
+        color: var(--muted);
         text-align: center;
         pointer-events: none;
       }
@@ -151,34 +392,108 @@
       #empty a {
         color: inherit;
       }
+
+      /* phones: the panel becomes a bottom sheet, the top bar gets shorter */
+      @media (max-width: 700px) {
+        header {
+          right: 10px;
+          max-width: none;
+        }
+        .wide-only {
+          display: none;
+        }
+        header > #counts {
+          white-space: normal;
+        }
+        .search input,
+        .search input:focus {
+          width: 140px;
+        }
+        #panel {
+          top: auto;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          width: auto;
+          max-height: 46vh;
+          border-radius: 14px 14px 0 0;
+        }
+        body.selected #groups {
+          display: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .search input {
+          transition: none;
+        }
+      }
     </style>
     <script src="vendor/d3.v4.min.js"></script>
     <script src="lib/forces.js"></script>
   </head>
   <body>
-    <header>
+    <header class="panel-box">
       <strong id="title">IG Social Graph</strong>
       <span id="counts" class="muted"></span>
-      <div class="search">
-        <input id="search" type="search" placeholder="Search  /" autocomplete="off" spellcheck="false" />
-        <ul id="results" role="listbox" hidden></ul>
+      <div class="search" role="search">
+        <label for="search" class="sr-only">Find a person</label>
+        <input
+          id="search"
+          type="search"
+          placeholder="Search  /"
+          autocomplete="off"
+          spellcheck="false"
+          role="combobox"
+          aria-controls="results"
+          aria-expanded="false"
+          aria-autocomplete="list"
+        />
+        <ul id="results" role="listbox" aria-label="Matching people" hidden></ul>
       </div>
-      <button id="share" hidden title="Anyone with the link can see these usernames and who follows whom">Copy share link</button>
-      <span id="legend" class="legend muted">
-        <span id="hint">click a name to see who follows them</span
-        ><span data-cat="follower" hidden style="--c: #ca2d2d">follower</span
-        ><span data-cat="following" hidden style="--c: green">following</span
-        ><span data-cat="mutual" hidden style="--c: purple">mutual</span>
-      </span>
-      <a id="profile" hidden target="_blank" rel="noopener">Instagram ↗</a>
+      <button id="share" hidden title="Anyone with the link can see these usernames and who follows whom">
+        Copy share link
+      </button>
+      <button id="theme" aria-label="Switch to dark theme" title="Switch theme">☾</button>
+      <span id="hint" class="muted wide-only">Click someone to see who follows whom · Esc clears</span>
     </header>
+
+    <aside id="panel" class="panel-box" hidden aria-labelledby="panel-name">
+      <div class="who">
+        <div class="avatar" id="avatar" aria-hidden="true"></div>
+        <div>
+          <h2 id="panel-name"></h2>
+          <a id="profile" target="_blank" rel="noopener">Open on Instagram ↗</a>
+        </div>
+        <button id="panel-close" aria-label="Clear selection (Esc)" title="Clear selection (Esc)">×</button>
+      </div>
+      <section data-cat="mutual" style="--c: var(--mutual)">
+        <button class="group-toggle" aria-pressed="false"><span class="swatch"></span><span class="label"></span></button>
+        <ul></ul>
+      </section>
+      <section data-cat="follower" style="--c: var(--follower)">
+        <button class="group-toggle" aria-pressed="false"><span class="swatch"></span><span class="label"></span></button>
+        <ul></ul>
+      </section>
+      <section data-cat="following" style="--c: var(--following)">
+        <button class="group-toggle" aria-pressed="false"><span class="swatch"></span><span class="label"></span></button>
+        <ul></ul>
+      </section>
+    </aside>
+
+    <aside id="groups" class="panel-box" hidden aria-labelledby="groups-title">
+      <h2 id="groups-title">Friend groups</h2>
+      <ol id="groups-list"></ol>
+    </aside>
+
+    <div id="announce" class="sr-only" aria-live="polite"></div>
+
     <div id="empty" hidden>
       <div>
         <p id="empty-text">No graph yet. Run a crawl from the extension popup.</p>
         <button id="example">Try an example</button>
       </div>
     </div>
-    <canvas id="graph"></canvas>
+    <canvas id="graph" role="img" aria-label="Follower graph"></canvas>
     <script type="module" src="viewer.js"></script>
   </body>
 </html>

@@ -10,9 +10,17 @@ Draws who-follows-whom among the people who follow you on Instagram, as an inter
 4. Leave it running. Progress and time left show in the popup; the icon badge shows the percentage. You can close the popup, pause and resume, or restart the browser — progress is saved.
 5. **View graph** opens the graph in a new tab. **Copy share link** copies a link to it.
 
+### Reading the graph
+
+- **Friend groups** are found from who-follows-whom alone (you are left out, since you connect to everyone) and coloured; the key in the corner lists them. Click a group's name there to rename it; names are saved in the share link.
+- **Dot size** grows with the number of connections. Names never overlap: the most connected people are labelled first.
+- **Click someone** (or find them with `/`) to open their panel: who follows them, whom they follow, who follows each other, each as a list you can click through, plus a link to their Instagram. Hover a list to show only those lines; click its heading to keep it. `Esc` clears.
+- Directions use orange and blue, which stay distinguishable with red-green colour blindness; "follow each other" is a heavier neutral line.
+- Light and dark themes follow your system; the ☾ / ☀ button overrides it.
+
 ### Share links
 
-A share link carries the graph inside itself, after the `#`, which browsers never send to a server, so nothing is stored anywhere: ~15 000 characters for 462 people and 9 661 connections. It opens on [sebasfavaron.github.io/IG-Social-Graph-Tool](https://sebasfavaron.github.io/IG-Social-Graph-Tool/), no extension needed. The link also keeps who is selected, which group is kept on, and the zoom; on that page the address bar always holds the current link, so copying it works too. Anyone who gets the link sees those usernames and who follows whom.
+A share link carries the graph inside itself, after the `#`, which browsers never send to a server, so nothing is stored anywhere: ~15 000 characters for 462 people and 9 661 connections. It opens on [sebasfavaron.github.io/IG-Social-Graph-Tool](https://sebasfavaron.github.io/IG-Social-Graph-Tool/), no extension needed. The link also keeps who is selected, which group is kept on, the zoom and your friend-group names; on that page the address bar always holds the current link, so copying it works too. Anyone who gets the link sees those usernames and who follows whom.
 
 The page is the extension's viewer, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it.
 
