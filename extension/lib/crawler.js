@@ -166,13 +166,20 @@ function handleNotOk(state, verdict, skipCurrent) {
 
 // The graph the viewer draws and the share link packs: { username, nodes, links }.
 export function toGraph(state) {
+  const me = state.viewer.username;
   const seen = new Set();
   const links = [];
-  for (const [source, target] of state.links) {
+  const add = (source, target) => {
     const key = `${source}\u0000${target}`;
-    if (seen.has(key) || source === target) continue;
+    if (seen.has(key) || source === target) return;
     seen.add(key);
     links.push({ source, target, value: 1 });
+  };
+  for (const [source, target] of state.links) {
+    add(source, target);
+    // Everyone in a "followed by" list is someone the logged user follows (that is what
+    // the list is), so they also get  me -> them. Only follower -> me links point at me.
+    if (target !== me) add(me, source);
   }
   return {
     metadata: {

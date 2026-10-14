@@ -53,7 +53,11 @@ test('crawls followers with pagination and builds follower->me and mutual->follo
   assert.deepEqual(await runToEnd(state, api), { done: true });
   const g = toGraph(state);
   const edges = g.links.map((l) => `${l.source}>${l.target}`).sort();
-  assert.deepEqual(edges, ['a>b', 'a>c', 'a>me', 'b>a', 'b>c', 'b>me', 'c>a', 'c>me', 'shop>me'].sort());
+  assert.deepEqual(
+    edges,
+    // followers -> me, mutuals -> follower, and me -> everyone seen in a "followed by" list
+    ['a>b', 'a>c', 'a>me', 'b>a', 'b>c', 'b>me', 'c>a', 'c>me', 'shop>me', 'me>a', 'me>b', 'me>c'].sort()
+  );
   assert.equal(g.nodes.length, 5);
   assert.equal(g.metadata.complete, true);
   // 2 follower pages + a, b, c(2 pages), shop
@@ -76,7 +80,7 @@ test('rate limit returns cooldown and does not lose the cursor', async () => {
   assert.deepEqual(await step(state, api), { cooldown: true });
   assert.equal(state.followersCursor, cursor);
   assert.deepEqual(await runToEnd(state, api), { done: true });
-  assert.equal(toGraph(state).links.length, 9);
+  assert.equal(toGraph(state).links.length, 12);
 });
 
 test('logged out and checkpoint are fatal', () => {
@@ -90,7 +94,8 @@ test('a follower that keeps failing is skipped after 3 tries, not retried foreve
   const api = fakeApi({ failOn: (p) => (p.includes('/2/mutual_followers') ? { status: 500, json: null } : null) });
   assert.deepEqual(await runToEnd(state, api), { done: true });
   assert.equal(api.calls.filter((p) => p.includes('/2/mutual_followers')).length, 3);
-  assert.ok(!toGraph(state).links.some((l) => l.target === 'a' && l.source !== 'a'));
+  // no "followed by" links for a (me -> a comes from a showing up in others' lists)
+  assert.ok(!toGraph(state).links.some((l) => l.target === 'a' && l.source !== 'me'));
 });
 
 test('maxFollowers limits the mutuals phase', async () => {
