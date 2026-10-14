@@ -406,8 +406,11 @@ export function drawGraph(
     let best = null;
     let bestD = Infinity;
     let label = null;
+    // with someone selected only the highlighted people respond: a faded one reads as
+    // background, so clicking there clears the selection like clicking empty space
+    const onlyRevealed = selection !== null && hoverGroup === null;
     for (const n of nodes) {
-      if (n.hidden && !revealed.has(n)) continue;
+      if ((n.hidden || onlyRevealed) && !revealed.has(n)) continue;
       const reach = Math.max(mobile ? 14 : 8, radiusOf(n) + 4) / k;
       const d = (n.x - gx) ** 2 + (n.y - gy) ** 2;
       if (d < reach * reach && d < bestD) {
