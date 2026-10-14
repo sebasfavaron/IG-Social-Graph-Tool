@@ -1,32 +1,34 @@
-# DEPRECATED: this tool does not work anymore because Instagram now blocks scripts coming from github.io
 ## Instagram social graph
 
-Generate a social graph based on your ig socials (running on [ig-social-graph.netlify.app](https://ig-social-graph.netlify.app/))
+Draws who-follows-whom among the people who follow you on Instagram, as an interactive graph. Friend groups show up as clusters.
 
-1. Generating the data:
-   1. From the server you just ran, you need to drag the bookmark link (Note: if you want to modify the bookmarklet see here[^1])
-   2. Head to [instagram](https://www.instagram.com)
-   3. Click the bookmarklet
-   4. (Optional) If you have a previous incomplete json, upload that on the box that appears. The script will continue where it left. If not, click close.
-   5. Wait until it finishes and downloads the json. You can use the console to see the progress
-2. Visualizing the data:
-   1. Enter the [website](https://ig-social-graph.netlify.app/)
-   2. Upload the recently downloaded json file using the "Upload" button (or drag into the website)
-   3. Enjoy your own personal, interactive social graph!
+### Use it (Chrome extension)
 
-If you have any issues, don't hesitate contacting me. I have only tested this on a Mac using Safari and Chrome so far
+1. Clone this repo, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the [`extension/`](./extension) folder.
+2. Log in to [instagram.com](https://www.instagram.com) in that browser.
+3. Click the extension icon → **Start**. It lists your followers, then asks Instagram, for each of them, which accounts you follow also follow them.
+4. Leave it running. Progress and time left show in the popup; the icon badge shows the percentage. You can close the popup, pause and resume, or restart the browser — progress is saved.
+5. **View graph** opens the graph in a new tab. **Download JSON** exports it in the format the [website](https://ig-social-graph.netlify.app/) and the [`graph-scripts`](./scripts/graph-scripts) read.
 
----
+Everything stays in your browser: requests go from an instagram.com tab with your own session, and the data lives in the extension's local storage.
 
-### Debugging
+### Limits and gotchas
 
-- When downloading the data, if you get an error, it's probable you have reached IG's rate limit (I think it allows 200 requests per hour, among other possible daily limits). This means you should try again in a few hours. DO NOT keep trying if this happens as it will only increase your wait time
-- When visualizing the graph, if you see it stuck in the top-right corner, the data is probably not well formated. You can download and run the script [addMissingNodes](./addMissingNodes.js) to fix it. Refresh and load the new json file
+- **Speed.** One request every ~6 s by default (Settings). A follower with many mutuals takes more than one request. 500 followers ≈ 1 hour.
+- **Instagram pushing back.** If Instagram answers "please wait" or HTTP 429, the crawl pauses on its own for 15 min, doubling up to 2 h, and resumes. If it asks you to confirm it's you, the popup says so; finish the check on instagram.com and press Resume.
+- **Keep an instagram.com tab open.** The extension opens one in the background if there is none, and marks it so Memory Saver does not discard it.
+- **Followers to check** (Settings) caps the second phase, handy for a quick first look. Raise it later and Resume to continue.
+- Accounts connected to the graph by a single link (usually shops and meme pages that only follow you) are hidden in the viewer.
 
-### Roadmap
-- Add a modal with
-   - progress bar
-   - method to prune lone nodes (accounts that no one but you follow. This is usually meme accounts or ig shops)
+### Develop
+
+- `extension/lib/crawler.js` has the crawl logic with no `chrome.*` calls; `npm run test:extension` runs it against a fake Instagram.
+- After editing, hit the reload icon on the extension's card in `chrome://extensions`.
+- Endpoints used (web app id `936619743392459`): `/api/v1/friendships/{pk}/followers/` and `/api/v1/friendships/{pk}/mutual_followers/`, paginated with `max_id` / `next_max_id`.
+
+### Legacy
+
+The bookmarklet (`scripts/bookmarklet-download-ig-data.js`) no longer works: Instagram blocks scripts loaded from github.io, and the GraphQL `query_hash` endpoint and `window._sharedData` it relied on are gone. The Next.js site in this repo still visualizes JSON exports. If a graph shows up stuck in a corner there, run [addMissingNodes](./scripts/graph-scripts/addMissingNodes.js) on the file; the extension's viewer handles this itself.
 
 ### Credits (tutorials that helped me hack this together):
 
