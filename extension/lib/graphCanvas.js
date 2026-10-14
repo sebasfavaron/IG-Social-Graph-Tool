@@ -200,7 +200,7 @@ export function drawGraph(canvas, graph, { hidden = new Set(), onViewChange, onS
     }
 
     // labels: when zoomed in, or always while someone is selected (as before)
-    if (k > 1 || selection) {
+    if (labelsShown()) {
       ctx.font = `${textSize / k}px Arial`;
       ctx.textBaseline = 'middle';
       ctx.fillStyle = 'black';
@@ -234,13 +234,28 @@ export function drawGraph(canvas, graph, { hidden = new Set(), onViewChange, onS
   }
 
   // ---- interaction ------------------------------------------------------------------
-  // nearest visible person within a few pixels of the pointer
+  const labelsShown = () => transform.k > 1 || !!selection;
+
+  // Label width in screen pixels at the base font size, measured once per person.
+  const measure = document.createElement('canvas').getContext('2d');
+  function labelWidth(n) {
+    if (n.labelWidth === undefined) {
+      measure.font = `${textSize}px Arial`;
+      n.labelWidth = measure.measureText(n.id).width;
+    }
+    return n.labelWidth;
+  }
+
+  // The person under the pointer: their dot (nearest within a few pixels) or, while names
+  // are drawn, their name, which the SVG version treated as part of the same shape.
   function nodeAt(px, py) {
     const gx = transform.invertX(px);
     const gy = transform.invertY(py);
-    const reach = Math.max(8, nodeRadius * 2 + 4) / transform.k;
+    const k = transform.k;
+    const reach = Math.max(8, nodeRadius * 2 + 4) / k;
     let best = null;
     let bestD = reach * reach;
+    let label = null;
     for (const n of nodes) {
       if (n.hidden && !revealed.has(n)) continue;
       const d = (n.x - gx) ** 2 + (n.y - gy) ** 2;
@@ -248,8 +263,14 @@ export function drawGraph(canvas, graph, { hidden = new Set(), onViewChange, onS
         bestD = d;
         best = n;
       }
+      if (!best && labelsShown()) {
+        const scale = n === selection?.node ? 2 : 1;
+        const left = n.x + textDx / k;
+        const half = (textSize * scale * 0.6) / k;
+        if (gx >= left && gx <= left + (labelWidth(n) * scale) / k && Math.abs(gy - n.y) <= half) label = n;
+      }
     }
-    return best;
+    return best || label;
   }
 
   const zoom = d3
