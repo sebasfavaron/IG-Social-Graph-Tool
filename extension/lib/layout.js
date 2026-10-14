@@ -2,6 +2,8 @@
 // from the layout worker. Same input order -> same positions, which share links rely on.
 
 const CACHE_PREFIX = 'layout:';
+// Bump when forceLayout.js changes how people are placed, so old cached layouts are dropped.
+const LAYOUT_VERSION = 2;
 const CACHE_INDEX = 'layout:index';
 const CACHE_KEEP = 8;
 
@@ -17,7 +19,7 @@ function graphKey(ids, linkIndexes) {
     mix(10);
   }
   for (const n of linkIndexes) mix(n + 1);
-  return `${CACHE_PREFIX}${self.LAYOUT_VERSION}:${ids.length}:${linkIndexes.length}:${h.toString(36)}`;
+  return `${CACHE_PREFIX}${LAYOUT_VERSION}:${ids.length}:${linkIndexes.length}:${h.toString(36)}`;
 }
 
 function readCache(key, count) {
