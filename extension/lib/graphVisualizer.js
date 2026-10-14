@@ -214,45 +214,54 @@ export function drawGraph({ nodes, links }) {
   }
 
   // Add click listeners
+  const categoryColors = { follower: '#ca2d2d', following: 'green', mutual: 'purple' };
+  let selection = null; // { element, username, links: { follower, following, mutual } }
+
+  function setLinkStyle(link, color, username) {
+    // light up the other person on the link, not the clicked one
+    const other = link.source.id === username ? link.target : link.source;
+    d3.select(`#${convertToValidIdFormat(other.id)}`).style('opacity', 0.8);
+
+    const linkElement = document.querySelector(
+      '#' + convertToValidIdFormat(`link-${link.source.id}-${link.target.id}`)
+    );
+    linkElement.style.strokeOpacity = 0.8;
+    linkElement.style.stroke = color;
+    linkElement.setAttribute('marker-start', 'url(#arrow)');
+    const oppositeLinkElement = document.querySelector(
+      '#' + convertToValidIdFormat(`link-${link.target.id}-${link.source.id}`)
+    );
+    if (oppositeLinkElement) {
+      oppositeLinkElement.setAttribute('marker-start', 'url(#arrow)');
+    }
+  }
+
+  // Paints the selected node and its links; `only` limits it to one category.
+  function paintSelection(only = null) {
+    if (!selection) return;
+    styleManager.setBackgroundNodesStyles();
+    styleManager.clickedNode.setNode(selection.element);
+    styleManager.clickedNode.setStyles();
+    for (const [category, categoryLinks] of Object.entries(selection.links)) {
+      if (only && only !== category) continue;
+      categoryLinks.forEach((link) =>
+        setLinkStyle(link, categoryColors[category], selection.username)
+      );
+    }
+  }
+
   node.on('click', function (event) {
     d3.event.stopPropagation();
-
-    // Reset all nodes' styles
-    styleManager.setBackgroundNodesStyles();
-
-    // Highlight the clicked node
-    styleManager.clickedNode.setNode(d3.select(this));
-    styleManager.clickedNode.setStyles();
-
-    // Highlight the clicked node's followers and their links
-    const usersFriendLinks = getUsersFriendLinks(event.id);
-    function setLinkStyle(link, color) {
-      const sourceNode = d3.select(
-        `#${convertToValidIdFormat(link.source.id)}`
-      );
-      sourceNode.style('opacity', 0.8);
-
-      const linkElement = document.querySelector(
-        '#' + convertToValidIdFormat(`link-${link.source.id}-${link.target.id}`)
-      );
-      linkElement.style.strokeOpacity = 0.8;
-      linkElement.style.stroke = color;
-      linkElement.setAttribute('marker-start', 'url(#arrow)');
-      const oppositeLinkElement = document.querySelector(
-        '#' + convertToValidIdFormat(`link-${link.target.id}-${link.source.id}`)
-      );
-      if (oppositeLinkElement) {
-        oppositeLinkElement.setAttribute('marker-start', 'url(#arrow)');
-      }
-    }
-
-    usersFriendLinks.followers.forEach((link) => setLinkStyle(link, '#ca2d2d')); // red
-    usersFriendLinks.followings.forEach((link) => setLinkStyle(link, 'green'));
-    usersFriendLinks.friendships.forEach((link) =>
-      setLinkStyle(link, 'purple')
-    );
+    const { followers, followings, friendships } = getUsersFriendLinks(event.id);
+    selection = {
+      element: d3.select(this),
+      username: event.id,
+      links: { follower: followers, following: followings, mutual: friendships },
+    };
+    paintSelection();
   });
   d3.select('body').on('click', () => {
+    selection = null;
     styleManager.resetStyles();
   });
 
@@ -322,4 +331,13 @@ export function drawGraph({ nodes, links }) {
     d.fx = null;
     d.fy = null;
   }
+
+  return {
+    hasSelection: () => selection !== null,
+    // null shows all three categories again
+    showOnly: (category) => paintSelection(category),
+    counts: () =>
+      selection &&
+      Object.fromEntries(Object.entries(selection.links).map(([c, l]) => [c, l.length])),
+  };
 }

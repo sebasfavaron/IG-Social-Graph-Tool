@@ -46,7 +46,20 @@
       label.button input {
         display: none;
       }
-      .legend span::before {
+      .legend [data-cat] {
+        padding: 2px 6px 2px 0;
+        border-radius: 4px;
+        cursor: default;
+      }
+      .legend.active [data-cat] {
+        cursor: pointer;
+        color: #1b1b1b;
+      }
+      .legend.active [data-cat]:hover,
+      .legend [data-cat].pinned {
+        background: #f0f0f0;
+      }
+      .legend [data-cat]::before {
         content: '';
         display: inline-block;
         width: 10px;
@@ -73,9 +86,11 @@
       <strong id="title">IG Social Graph</strong>
       <span id="counts" class="muted"></span>
       <label class="button">Open JSON…<input id="file" type="file" accept=".json,application/json" /></label>
-      <span class="legend muted">
-        click a name:<span style="--c: #ca2d2d">follower</span><span style="--c: green">following</span
-        ><span style="--c: purple">mutual</span>
+      <span id="legend" class="legend muted">
+        <span id="hint">click a name:</span
+        ><span data-cat="follower" style="--c: #ca2d2d">follower</span
+        ><span data-cat="following" style="--c: green">following</span
+        ><span data-cat="mutual" style="--c: purple">mutual</span>
       </span>
     </header>
     <div id="empty" hidden>No graph yet. Run a crawl from the extension popup, or open a JSON export.</div>

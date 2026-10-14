@@ -31,8 +31,51 @@ function show(graph) {
     (graph.metadata?.complete === false ? ' · partial' : '');
   $('empty').hidden = pruned.nodes.length > 0;
   d3.select('svg').selectAll('*').remove();
-  if (pruned.nodes.length) drawGraph(pruned);
+  graphControl = pruned.nodes.length ? drawGraph(pruned) : null;
+  pinned = null;
+  updateLegend();
 }
+
+// Legend: hover a category to see only those links of the selected person; click to keep it.
+let graphControl = null;
+let pinned = null;
+const legendItems = [...document.querySelectorAll('[data-cat]')];
+const LABELS = { follower: 'follower', following: 'following', mutual: 'mutual' };
+
+function updateLegend() {
+  const counts = graphControl?.hasSelection() ? graphControl.counts() : null;
+  $('legend').classList.toggle('active', !!counts);
+  $('hint').textContent = counts ? 'show only:' : 'click a name:';
+  if (!counts) pinned = null;
+  for (const item of legendItems) {
+    const cat = item.dataset.cat;
+    item.textContent = counts ? `${LABELS[cat]} ${counts[cat]}` : LABELS[cat];
+    item.classList.toggle('pinned', pinned === cat);
+  }
+}
+
+for (const item of legendItems) {
+  item.onmouseenter = () => graphControl?.hasSelection() && graphControl.showOnly(item.dataset.cat);
+  item.onmouseleave = () => graphControl?.hasSelection() && graphControl.showOnly(pinned);
+  item.onclick = () => {
+    if (!graphControl?.hasSelection()) return;
+    pinned = pinned === item.dataset.cat ? null : item.dataset.cat;
+    graphControl.showOnly(pinned);
+    updateLegend();
+  };
+}
+// Header clicks must not reach the body handler that clears the selection.
+document.querySelector('header').addEventListener('click', (e) => e.stopPropagation());
+// Any click on the graph selects or clears a person (the node handler stops propagation,
+// hence capture); drop the pin and refresh the counts once the graph has handled it.
+document.querySelector('svg').addEventListener(
+  'click',
+  () => {
+    pinned = null;
+    setTimeout(updateLegend);
+  },
+  true
+);
 
 $('file').onchange = async () => {
   const file = $('file').files[0];
