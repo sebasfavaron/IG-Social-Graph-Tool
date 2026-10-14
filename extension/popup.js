@@ -55,7 +55,12 @@ function render(s) {
   $('links').textContent = s.links.toLocaleString();
   $('requests').textContent = s.requests.toLocaleString();
   // measured: from the pace so far, Instagram's slowdowns included; otherwise only a floor
-  const { ms, measured } = s.remaining;
+  // A worker started before the update sends no estimate (Chrome keeps the old worker
+  // running until the extension is reloaded, while the popup is read fresh each time).
+  const { ms, measured } = s.remaining || {
+    ms: Math.max(0, target - s.done) * s.settings.delaySec * 1000,
+    measured: false,
+  };
   $('eta').textContent =
     s.status === 'done' ? '—' : s.phase === 'followers' ? '…' : `${measured ? '~' : 'at least '}${formatDuration(ms)}`;
   $('eta').title = measured
