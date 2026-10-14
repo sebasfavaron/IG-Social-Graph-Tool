@@ -1,4 +1,6 @@
-export function drawGraph({ nodes, links }) {
+// onViewChange(byUser) fires on every zoom/pan; byUser is false for programmatic moves
+// (fit on load, panning to a searched person).
+export function drawGraph({ nodes, links }, { onViewChange } = {}) {
   function convertToValidIdFormat(id) {
     return id.replace(/[^a-zA-Z0-9]/g, '');
   }
@@ -199,6 +201,7 @@ export function drawGraph({ nodes, links }) {
       styleManager.setK(k);
       styleManager.setStyles();
       styleManager.clickedNode.setStyles();
+      onViewChange?.(!!d3.event.sourceEvent);
     });
   svg.call(zoom);
 
@@ -337,6 +340,13 @@ export function drawGraph({ nodes, links }) {
   }
   fitToView();
 
+  // Views are stored relative to the layout's centroid, so a view saved on one screen
+  // size lands on the same spot on another (the layout is centred on the viewport).
+  const centroid = {
+    x: nodes.reduce((sum, d) => sum + d.x, 0) / nodes.length,
+    y: nodes.reduce((sum, d) => sum + d.y, 0) / nodes.length,
+  };
+
   // Define drag behaviors for the nodes
   function dragstarted(d) {
     if (!d3.event.active) simulation.alphaTarget(0.01).restart();
@@ -362,6 +372,25 @@ export function drawGraph({ nodes, links }) {
     showOnly: (category) => paintSelection(category),
     ids: () => nodes.map((d) => d.id),
     // Selects a person as if clicked and pans to them, zooming in enough to read names.
+    // Selects a person as if clicked, without moving the view.
+    select: (username) => {
+      const element = node.filter((d) => d.id === username);
+      if (element.empty()) return false;
+      selectNode(username, element);
+      return true;
+    },
+    view: () => {
+      const t = d3.zoomTransform(svg.node());
+      const { w, h } = viewSize();
+      return { x: (w / 2 - t.x) / t.k - centroid.x, y: (h / 2 - t.y) / t.k - centroid.y, k: t.k };
+    },
+    setView: ({ x, y, k }) => {
+      const { w, h } = viewSize();
+      svg.call(
+        zoom.transform,
+        d3.zoomIdentity.translate(w / 2 - k * (x + centroid.x), h / 2 - k * (y + centroid.y)).scale(k)
+      );
+    },
     focus: (username) => {
       const element = node.filter((d) => d.id === username);
       if (element.empty()) return false;

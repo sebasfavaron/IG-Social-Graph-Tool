@@ -2,7 +2,7 @@ import { toGraphJson } from './lib/crawler.js';
 import { drawGraph } from './lib/graphVisualizer.js';
 import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
-import { SHARE_PREFIX, decodeGraph, encodeGraph } from './lib/share.js';
+import { buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
 
 const PAGES_URL = 'https://sebasfavaron.github.io/IG-Social-Graph-Tool/';
 const INSTALL_URL = 'https://github.com/sebasfavaron/IG-Social-Graph-Tool#use-it-chrome-extension';
@@ -36,8 +36,13 @@ function withAllNodes(graph) {
 }
 
 let shown = null; // what is on screen, for the share link
+let encoded = null; // `shown` packed for the link; filled in the background
+let viewTouched = false; // the view goes in the link only once someone zoomed or panned
 
-function show(graph) {
+const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+// encodedGraph: the packed form when the graph came from a link, so it is not redone.
+function show(graph, { encodedGraph = null } = {}) {
   const username = graph.username || graph.metadata?.loggedUsername;
   const total = graph.nodes.length;
   const pruned = pruneLoneNodes(withAllNodes(graph));
@@ -50,13 +55,54 @@ function show(graph) {
       : '') +
     (graph.metadata?.complete === false ? ' · partial' : '');
   $('empty').hidden = pruned.nodes.length > 0;
+  // Same order whatever the source (file, crawl, link), so the layout comes out the same
+  // and a view saved in a link lands on the same people.
+  pruned.nodes.sort((a, b) => byId(a.id, b.id));
+  pruned.links.sort((a, b) => byId(a.source, b.source) || byId(a.target, b.target));
   d3.select('svg').selectAll('*').remove();
-  graphControl = pruned.nodes.length ? drawGraph(pruned) : null;
+  graphControl = pruned.nodes.length ? drawGraph(pruned, { onViewChange }) : null;
   shown = graphControl ? { ...pruned, username } : null;
   $('share').hidden = !shown;
   pinned = null;
+  viewTouched = false;
+  encoded = encodedGraph;
+  if (!inExtension && !encodedGraph) {
+    history.replaceState(null, '', location.pathname + location.search); // drop a stale link
+    const packing = shown;
+    if (packing) {
+      encodeGraph(packing).then((g) => {
+        if (shown === packing) {
+          encoded = g;
+          syncUrl();
+        }
+      });
+    }
+  }
   updateLegend();
   closeSearch();
+}
+
+// The address bar always holds a link to what is on screen (on the public page; an
+// extension page's address is no use to anyone else).
+function currentHash(g) {
+  return buildHash({
+    g,
+    p: graphControl?.selected(),
+    c: pinned,
+    v: viewTouched && graphControl ? graphControl.view() : null,
+  });
+}
+let syncTimer = null;
+function syncUrl() {
+  if (inExtension || !encoded) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    history.replaceState(null, '', location.pathname + location.search + currentHash(encoded));
+  }, 250);
+}
+function onViewChange(byUser) {
+  if (byUser) viewTouched = true;
+  syncUrl();
 }
 
 // Legend: hover a category to see only those links of the selected person; click to keep it.
@@ -86,6 +132,7 @@ function updateLegend() {
     item.title = LABELS[cat](selected, counts[cat]);
     item.classList.toggle('pinned', pinned === cat);
   }
+  syncUrl();
 }
 
 for (const item of legendItems) {
@@ -116,7 +163,6 @@ async function openFile(file) {
   try {
     const graph = JSON.parse(await file.text());
     if (!Array.isArray(graph.nodes) || !Array.isArray(graph.links)) throw new Error('no nodes/links in it');
-    clearShareHash();
     show(graph);
   } catch (err) {
     alert(`Could not open ${file.name}: ${err.message}`);
@@ -124,33 +170,40 @@ async function openFile(file) {
 }
 $('file').onchange = () => openFile($('file').files[0]);
 // structuredClone: d3 replaces link endpoints with node objects, so each run needs fresh data
-$('example').onclick = () => {
-  clearShareHash();
-  show(structuredClone(EXAMPLE_GRAPH));
-};
+$('example').onclick = () => show(structuredClone(EXAMPLE_GRAPH));
 
-// Share: the graph on screen travels inside the link (after "#", never sent to a server).
-// From the extension the link points at the public page, which can open it.
-function clearShareHash() {
-  if (location.hash.startsWith(SHARE_PREFIX)) history.replaceState(null, '', location.pathname + location.search);
-}
-
+// Share: the graph on screen and how it is being looked at travel inside the link (after
+// "#", never sent to a server). From the extension the link points at the public page.
 async function openShareHash() {
-  if (!location.hash.startsWith(SHARE_PREFIX)) return false;
+  const state = parseHash(location.hash);
+  if (!state?.g) return false;
   try {
-    show(await decodeGraph(location.hash.slice(SHARE_PREFIX.length)));
+    if (state.g !== encoded) show(await decodeGraph(state.g), { encodedGraph: state.g });
   } catch (err) {
     alert(`This share link looks cut off or broken (${err.message}). Ask for it again, or for the JSON file.`);
     return false;
   }
+  if (!graphControl) return true;
+  if (state.p) {
+    // with a saved view, select in place; without one, pan to the person like search does
+    if (state.v) graphControl.select(state.p);
+    else graphControl.focus(state.p);
+    pinned = state.c;
+    if (pinned) graphControl.showOnly(pinned);
+  }
+  if (state.v) {
+    graphControl.setView(state.v);
+    viewTouched = true;
+  }
+  updateLegend();
   return true;
 }
-window.addEventListener('hashchange', openShareHash);
+window.addEventListener('hashchange', openShareHash); // someone pasted or edited a link
 
 $('share').onclick = async () => {
   if (!shown) return;
   const base = inExtension ? PAGES_URL : location.origin + location.pathname;
-  const url = base + SHARE_PREFIX + (await encodeGraph(shown));
+  const url = base + currentHash(encoded || (await encodeGraph(shown)));
   const label = $('share').textContent;
   try {
     await navigator.clipboard.writeText(url);

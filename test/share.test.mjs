@@ -28,3 +28,14 @@ test('real-sized graph stays a usable link, duplicates collapse, d3-mutated link
 test('garbage is rejected, not drawn', async () => {
   await assert.rejects(decodeGraph('not-a-graph'));
 });
+
+test('view state round-trips through the hash and junk values are dropped', async () => {
+  const { buildHash, parseHash } = await import('../extension/lib/share.js');
+  const hash = buildHash({ g: 'abc_-', p: 'jose.favaron', c: 'mutual', v: { x: -12.4, y: 30.6, k: 2.456 } });
+  assert.equal(hash, '#g=abc_-&p=jose.favaron&c=mutual&v=-12,31,2.46');
+  assert.deepEqual(parseHash(hash), { g: 'abc_-', p: 'jose.favaron', c: 'mutual', v: { x: -12, y: 31, k: 2.46 } });
+  assert.deepEqual(parseHash('#g=abc&c=evil&v=1,2'), { g: 'abc', p: null, c: null, v: null });
+  assert.equal(parseHash('#other'), null);
+  // old links carried only the graph
+  assert.deepEqual(parseHash('#g=abc'), { g: 'abc', p: null, c: null, v: null });
+});

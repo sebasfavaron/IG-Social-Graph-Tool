@@ -83,3 +83,28 @@ export async function decodeGraph(encoded) {
     links,
   };
 }
+
+// The rest of the view rides along after the graph:
+//   #g=<graph>&p=<selected username>&c=<follower|following|mutual>&v=<x>,<y>,<zoom>
+// v is the view centre relative to the layout's centroid; it is left out until the
+// viewer moves the view by hand, so a fresh link fits whatever screen opens it.
+export function buildHash({ g, p, c, v }) {
+  const parts = [`g=${g}`];
+  if (p) parts.push(`p=${encodeURIComponent(p)}`);
+  if (p && c) parts.push(`c=${c}`);
+  if (v) parts.push(`v=${Math.round(v.x)},${Math.round(v.y)},${+v.k.toFixed(2)}`);
+  return `#${parts.join('&')}`;
+}
+
+export function parseHash(hash) {
+  if (!hash.startsWith(SHARE_PREFIX)) return null;
+  const params = new URLSearchParams(hash.slice(1));
+  const [x, y, k] = (params.get('v') || '').split(',').map(Number);
+  const category = params.get('c');
+  return {
+    g: params.get('g'),
+    p: params.get('p') || null,
+    c: ['follower', 'following', 'mutual'].includes(category) ? category : null,
+    v: [x, y, k].every(Number.isFinite) && k > 0 ? { x, y, k } : null,
+  };
+}

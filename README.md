@@ -14,7 +14,7 @@ Draws who-follows-whom among the people who follow you on Instagram, as an inter
 
 Open [sebasfavaron.github.io/IG-Social-Graph-Tool](https://sebasfavaron.github.io/IG-Social-Graph-Tool/) and drop the file on the page, or use **Open JSON…**. The file is read in your browser and never uploaded. It's the same viewer as the extension's, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it. Exports from the old bookmarklet open too.
 
-**Copy share link** (in the viewer, both here and in the extension) packs the graph on screen into the link itself, after the `#`, which browsers never send to a server. Nothing is stored anywhere; ~15 000 characters for 462 people and 9 661 connections. Anyone who gets the link sees those usernames and who follows whom, so share it like you would the JSON.
+**Copy share link** (in the viewer, both here and in the extension) packs the graph on screen into the link itself, after the `#`, which browsers never send to a server. Nothing is stored anywhere; ~15 000 characters for 462 people and 9 661 connections. The link also keeps who is selected, which group is kept on, and the zoom, and on this page the address bar always holds that link, so copying it works too. Anyone who gets the link sees those usernames and who follows whom, so share it like you would the JSON.
 
 Everything stays in your browser: requests go from an instagram.com tab with your own session, and the data lives in the extension's local storage.
 
