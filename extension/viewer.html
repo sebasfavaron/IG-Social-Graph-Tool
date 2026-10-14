@@ -441,6 +441,10 @@
           width: 100%;
           box-sizing: border-box;
         }
+        /* iOS zooms the whole page into any text field under 16px when it gets focus */
+        input {
+          font-size: 16px !important;
+        }
         #groups {
           left: 8px;
           bottom: 8px;
