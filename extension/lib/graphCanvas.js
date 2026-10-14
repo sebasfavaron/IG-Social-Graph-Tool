@@ -443,44 +443,9 @@ export function drawGraph(
       onViewChange?.(!!d3.event.sourceEvent);
     });
 
-  // Dragging a person nudges the layout like before. The settled layout comes from the
-  // worker; a main-thread simulation is built only when someone is dragged.
-  let simulation = null;
-  function liveSimulation() {
-    if (!simulation) {
-      const idx = links.map((l) => ({ source: l.source.index, target: l.target.index }));
-      simulation = self.buildSimulation(d3, nodes, idx).alpha(0).stop().on('tick', redraw);
-    }
-    return simulation;
-  }
-  const drag = d3
-    .drag()
-    .container(canvas)
-    .subject(() => {
-      if (!laidOut) return null;
-      const n = nodeAt(d3.event.x, d3.event.y);
-      return n ? { node: n, x: d3.event.x, y: d3.event.y } : null;
-    })
-    .on('start', () => {
-      if (!d3.event.active) liveSimulation().alphaTarget(0.01).restart();
-      const { node } = d3.event.subject;
-      node.fx = node.x;
-      node.fy = node.y;
-    })
-    .on('drag', () => {
-      const { node } = d3.event.subject;
-      node.fx = transform.invertX(d3.event.x);
-      node.fy = transform.invertY(d3.event.y);
-    })
-    .on('end', () => {
-      if (!d3.event.active) liveSimulation().alphaTarget(0);
-      const { node } = d3.event.subject;
-      node.fx = null;
-      node.fy = null;
-    });
-  // drag first: when it finds a person under the pointer it stops the event, so the
-  // zoom behaviour does not pan at the same time
-  canvasSel.call(drag).call(zoom);
+  // People can't be dragged: on phones a pinch that started on someone moved them
+  // instead of zooming, and it kept a live simulation around for little use.
+  canvasSel.call(zoom);
 
   function onClick(e) {
     if (!laidOut) return;
@@ -636,8 +601,7 @@ export function drawGraph(
     destroy: () => {
       destroyed = true;
       layout.cancel();
-      simulation?.stop();
-      canvasSel.interrupt().on('.zoom', null).on('.drag', null);
+      canvasSel.interrupt().on('.zoom', null);
       canvas.removeEventListener('click', onClick);
       window.removeEventListener('resize', resize);
       delete canvas.dataset.ready;

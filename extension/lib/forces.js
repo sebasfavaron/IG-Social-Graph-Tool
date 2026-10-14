@@ -1,5 +1,5 @@
-// Classic script (no import/export): loaded by the layout worker with importScripts and by
-// viewer.html with a plain <script>, so both build the exact same simulation.
+// Classic script (no import/export): loaded by the layout worker with importScripts, and by
+// viewer.html with a plain <script> for LAYOUT_VERSION (the layout cache key).
 // nodes: [{ id }], links: [{ source: index, target: index }]
 self.buildSimulation = function buildSimulation(d3, nodes, links) {
   return d3
