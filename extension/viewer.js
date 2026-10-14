@@ -41,16 +41,26 @@ function show(graph) {
 let graphControl = null;
 let pinned = null;
 const legendItems = [...document.querySelectorAll('[data-cat]')];
-const LABELS = { follower: 'follower', following: 'following', mutual: 'mutual' };
+// Labels name the selected person, so the direction of each group reads as a sentence.
+const LABELS = {
+  follower: (name) => `follow @${name}`,
+  following: (name) => `@${name} follows`,
+  mutual: () => 'follow each other',
+};
+const shorten = (name) => (name.length > 16 ? `${name.slice(0, 15)}…` : name);
 
 function updateLegend() {
-  const counts = graphControl?.hasSelection() ? graphControl.counts() : null;
+  const selected = graphControl?.selected();
+  const counts = selected ? graphControl.counts() : null;
   $('legend').classList.toggle('active', !!counts);
-  $('hint').textContent = counts ? 'show only:' : 'click a name:';
+  $('hint').textContent = counts ? 'show only:' : 'click a name to see who follows them';
   if (!counts) pinned = null;
   for (const item of legendItems) {
     const cat = item.dataset.cat;
-    item.textContent = counts ? `${LABELS[cat]} ${counts[cat]}` : LABELS[cat];
+    item.hidden = !counts;
+    if (!counts) continue;
+    item.textContent = `${LABELS[cat](shorten(selected))} ${counts[cat]}`;
+    item.title = LABELS[cat](selected);
     item.classList.toggle('pinned', pinned === cat);
   }
 }
@@ -109,10 +119,11 @@ function renderResults() {
       mark.textContent = id.slice(at, at + q.length);
       li.append(id.slice(0, at), mark, id.slice(at + q.length));
       li.onmouseenter = () => setActive(i);
-      li.onmousedown = (e) => {
-        e.preventDefault(); // keep focus so blur does not close the list first
-        choose(id);
-      };
+      // keep focus so blur does not close the list first
+      li.onmousedown = (e) => e.preventDefault();
+      // pick on click, not mousedown: closing the list on mousedown let the mouseup land
+      // on the page behind it, and that click cleared the selection again
+      li.onclick = () => choose(id);
       return li;
     })
   );

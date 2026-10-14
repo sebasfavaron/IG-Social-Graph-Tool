@@ -24,12 +24,18 @@
         top: 10px;
         left: 10px;
         display: flex;
-        gap: 10px;
+        flex-wrap: wrap;
+        gap: 4px 10px;
         align-items: center;
+        max-width: calc(100vw - 42px);
         padding: 6px 10px;
         background: rgba(255, 255, 255, 0.9);
         border: 1px solid #e3e3e3;
         border-radius: 8px;
+      }
+      header > *,
+      .legend [data-cat] {
+        white-space: nowrap;
       }
       header .muted {
         color: #6b6b6b;
@@ -140,10 +146,10 @@
       </div>
       <label class="button">Open JSON…<input id="file" type="file" accept=".json,application/json" /></label>
       <span id="legend" class="legend muted">
-        <span id="hint">click a name:</span
-        ><span data-cat="follower" style="--c: #ca2d2d">follower</span
-        ><span data-cat="following" style="--c: green">following</span
-        ><span data-cat="mutual" style="--c: purple">mutual</span>
+        <span id="hint">click a name to see who follows them</span
+        ><span data-cat="follower" hidden style="--c: #ca2d2d">follower</span
+        ><span data-cat="following" hidden style="--c: green">following</span
+        ><span data-cat="mutual" hidden style="--c: purple">mutual</span>
       </span>
     </header>
     <div id="empty" hidden>No graph yet. Run a crawl from the extension popup, or open a JSON export.</div>

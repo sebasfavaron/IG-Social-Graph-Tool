@@ -31,21 +31,28 @@ export function drawGraph({ nodes, links }) {
 
   const container = svg.append('g').attr('class', 'container');
 
-  // Add the arrowhead marker
-  const arrow = container
-    .append('defs')
-    .append('marker')
-    .attr('id', 'arrow')
-    .attr('viewBox', '0 -5 10 10')
-    .attr('refX', '-4%')
-    .attr('markerWidth', 6)
-    .attr('markerHeight', 6)
-    .attr('fill', linkColor)
-    .attr('orient', 'auto')
-    .attr('markerUnits', 'strokeWidth')
-    .append('path')
-    .attr('d', 'M0,-5L10,0L0,5')
-    .attr('class', 'arrowhead');
+  // Arrowheads sit at the end of a link, on the person being followed, in the link's
+  // colour. refX backs the tip off so it stops at the edge of the (selected, 2x) circle.
+  const defs = container.append('defs');
+  function arrowFor(color) {
+    const id = `arrow-${color.replace(/[^a-zA-Z0-9]/g, '')}`;
+    if (defs.select(`#${id}`).empty()) {
+      defs
+        .append('marker')
+        .attr('id', id)
+        .attr('viewBox', '0 -5 10 10')
+        .attr('refX', 17)
+        .attr('markerWidth', 6)
+        .attr('markerHeight', 6)
+        .attr('fill', color)
+        .attr('orient', 'auto')
+        .attr('markerUnits', 'strokeWidth')
+        .append('path')
+        .attr('d', 'M0,-5L10,0L0,5')
+        .attr('class', 'arrowhead');
+    }
+    return `url(#${id})`;
+  }
 
   const link = container
     .selectAll('.link')
@@ -110,7 +117,7 @@ export function drawGraph({ nodes, links }) {
       });
 
       // Hide all arrows
-      link.attr('marker-start', 'none');
+      link.attr('marker-end', null);
     };
 
     return {
@@ -230,12 +237,13 @@ export function drawGraph({ nodes, links }) {
     );
     linkElement.style.strokeOpacity = 0.8;
     linkElement.style.stroke = color;
-    linkElement.setAttribute('marker-start', 'url(#arrow)');
+    linkElement.setAttribute('marker-end', arrowFor(color));
     const oppositeLinkElement = document.querySelector(
       '#' + convertToValidIdFormat(`link-${link.target.id}-${link.source.id}`)
     );
+    // a mutual link is drawn once; the reverse line gets the second arrowhead
     if (oppositeLinkElement) {
-      oppositeLinkElement.setAttribute('marker-start', 'url(#arrow)');
+      oppositeLinkElement.setAttribute('marker-end', arrowFor(color));
     }
   }
 
@@ -347,6 +355,7 @@ export function drawGraph({ nodes, links }) {
 
   return {
     hasSelection: () => selection !== null,
+    selected: () => selection?.username ?? null,
     // null shows all three categories again
     showOnly: (category) => paintSelection(category),
     ids: () => nodes.map((d) => d.id),
