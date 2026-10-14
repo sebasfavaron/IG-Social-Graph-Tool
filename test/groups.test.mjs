@@ -24,10 +24,14 @@ test('finds planted groups when the logged user is left out', () => {
   assert.equal(groupOf.has('me'), false);
 });
 
-test('the logged user would merge everything into one group', () => {
-  const { graph } = planted();
-  const { sizes } = friendGroups(graph);
-  assert.equal(sizes.length, 1);
+test('the example graph splits into its three planted groups, bridges and all', () => {
+  const { groupOf, sizes } = friendGroups(EXAMPLE_GRAPH, { exclude: 'you', hidden: new Set(['tomi']) });
+  assert.equal(sizes.length, 3);
+  const same = (...ids) => new Set(ids.map((id) => groupOf.get(id))).size === 1;
+  assert.ok(same('ana', 'bruno', 'caro', 'dani', 'emi', 'feli', 'gael'), 'school split');
+  assert.ok(same('iara', 'joaco', 'kari', 'lu', 'maite'), 'work split');
+  assert.ok(same('nora', 'oto', 'pia', 'quique', 'rami'), 'family split');
+  assert.ok(!same('ana', 'kari') && !same('ana', 'nora') && !same('kari', 'nora'), 'groups merged');
 });
 
 test('small groups get no colour, hidden loners are ignored, same input same output', () => {
