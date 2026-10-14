@@ -54,9 +54,13 @@ function render(s) {
   $('checked').textContent = s.phase === 'followers' ? `listing… ${s.total}` : `${s.done} / ${target}`;
   $('links').textContent = s.links.toLocaleString();
   $('requests').textContent = s.requests.toLocaleString();
-  const remaining = Math.max(0, target - s.done);
+  // measured: from the pace so far, Instagram's slowdowns included; otherwise only a floor
+  const { ms, measured } = s.remaining;
   $('eta').textContent =
-    s.status === 'done' ? '—' : s.phase === 'followers' ? '…' : `~${formatDuration(remaining * s.settings.delaySec * 1000)}`;
+    s.status === 'done' ? '—' : s.phase === 'followers' ? '…' : `${measured ? '~' : 'at least '}${formatDuration(ms)}`;
+  $('eta').title = measured
+    ? 'From the pace so far, including the times Instagram made the crawl wait.'
+    : 'Not enough followers checked yet to measure the pace; this is the minimum at the current delay.';
   $('bar').style.width = s.phase === 'followers' ? '3%' : `${target ? (100 * s.done) / target : 0}%`;
 
   if (!settingsTouched) {

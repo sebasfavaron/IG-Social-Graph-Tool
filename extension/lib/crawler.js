@@ -187,3 +187,35 @@ export function toGraphJson(state) {
     links,
   };
 }
+
+// ---- Time left -------------------------------------------------------------------
+// The estimate comes from the pace measured so far: crawl time (running or waiting out
+// Instagram's slowdowns, not user pauses) per follower checked. That way cooldowns and
+// followers that need several pages are in it. Until enough followers are checked, it
+// falls back to the floor: remaining followers x delay.
+
+const MIN_SAMPLE = 5;
+
+// Call on every save. Counts time while running or cooling down.
+export function tickClock(state, now = Date.now()) {
+  const counting = state.status === STATUS.RUNNING || state.status === STATUS.COOLDOWN;
+  if (state.clock?.counting) state.activeMs = (state.activeMs || 0) + (now - state.clock.last);
+  state.clock = { last: now, counting };
+  // Pace is measured from the first moment of the mutuals phase this clock saw (crawls
+  // started before this existed begin measuring mid-way).
+  if (state.phase === 'mutuals' && !state.paceBase) {
+    state.paceBase = { activeMs: state.activeMs || 0, done: progress(state).done };
+  }
+}
+
+export function estimateRemaining(state) {
+  const { done, total } = progress(state);
+  const target = state.settings.maxFollowers ? Math.min(state.settings.maxFollowers, total) : total;
+  const remaining = Math.max(0, target - done);
+  const floorMs = remaining * state.settings.delaySec * 1000;
+  const base = state.paceBase;
+  const sampled = base ? done - base.done : 0;
+  if (sampled < MIN_SAMPLE) return { ms: floorMs, measured: false };
+  const perFollower = ((state.activeMs || 0) - base.activeMs) / sampled;
+  return { ms: Math.max(floorMs, remaining * perFollower), measured: true };
+}

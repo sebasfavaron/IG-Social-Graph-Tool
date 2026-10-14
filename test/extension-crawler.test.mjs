@@ -100,3 +100,31 @@ test('maxFollowers limits the mutuals phase', async () => {
   const checked = Object.values(state.followers).filter((f) => f.done).map((f) => f.username);
   assert.deepEqual(checked, ['a', 'b']);
 });
+
+test('time left counts Instagram cooldowns but not user pauses', async () => {
+  const { tickClock, estimateRemaining, STATUS } = await import('../extension/lib/crawler.js');
+  const state = initialState(me, { delaySec: 6 });
+  state.phase = 'mutuals';
+  state.order = Array.from({ length: 100 }, (_, i) => String(i));
+  state.followers = Object.fromEntries(state.order.map((pk) => [pk, { username: pk, done: false }]));
+  const finish = (n) => state.order.slice(0, n).forEach((pk) => (state.followers[pk].done = true));
+  let now = 0;
+  state.status = STATUS.RUNNING;
+  tickClock(state, now);
+  assert.equal(estimateRemaining(state).measured, false); // nothing measured yet: floor
+  assert.equal(estimateRemaining(state).ms, 100 * 6000);
+
+  // 10 followers in 60 s, then a 15 min cooldown, then 10 more in 60 s
+  now += 60_000; finish(10); tickClock(state, now);
+  state.status = STATUS.COOLDOWN; tickClock(state, now);
+  now += 15 * 60_000; state.status = STATUS.RUNNING; tickClock(state, now);
+  now += 60_000; finish(20); tickClock(state, now);
+  // a 2 h user pause does not count
+  state.status = STATUS.PAUSED; tickClock(state, now);
+  now += 2 * 3600_000; state.status = STATUS.RUNNING; tickClock(state, now);
+
+  const est = estimateRemaining(state);
+  assert.equal(est.measured, true);
+  // 17 min for 20 followers = 51 s each, 80 left
+  assert.equal(Math.round(est.ms / 1000), 80 * 51);
+});

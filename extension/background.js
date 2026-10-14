@@ -1,4 +1,4 @@
-import { IG_APP_ID, STATUS, initialState, progress, step } from './lib/crawler.js';
+import { IG_APP_ID, STATUS, estimateRemaining, initialState, progress, step, tickClock } from './lib/crawler.js';
 
 // The service worker owns the crawl state; popup and viewer only send messages.
 // Requests are made from inside an instagram.com tab (chrome.scripting) so they carry
@@ -24,7 +24,10 @@ function load() {
 }
 
 async function save() {
-  if (state) state.updatedAt = Date.now();
+  if (state) {
+    state.updatedAt = Date.now();
+    tickClock(state, state.updatedAt);
+  }
   await chrome.storage.local.set({ [STORAGE_KEY]: state });
   await updateBadge();
 }
@@ -256,6 +259,7 @@ function summary() {
     requests: state.requests,
     startedAt: state.startedAt,
     updatedAt: state.updatedAt,
+    remaining: estimateRemaining(state),
     ...progress(state),
   };
 }
