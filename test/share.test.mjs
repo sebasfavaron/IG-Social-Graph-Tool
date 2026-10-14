@@ -47,9 +47,20 @@ test('view state round-trips through the hash and junk values are dropped', asyn
   const { buildHash, parseHash } = await import('../extension/lib/share.js');
   const hash = buildHash({ g: 'abc_-', p: 'jose.favaron', c: 'mutual', v: { x: -12.4, y: 30.6, k: 2.456 } });
   assert.equal(hash, '#g=abc_-&p=jose.favaron&c=mutual&v=-12,31,2.46');
-  assert.deepEqual(parseHash(hash), { g: 'abc_-', p: 'jose.favaron', c: 'mutual', v: { x: -12, y: 31, k: 2.46 } });
-  assert.deepEqual(parseHash('#g=abc&c=evil&v=1,2'), { g: 'abc', p: null, c: null, v: null });
+  assert.deepEqual(parseHash(hash), { g: 'abc_-', p: 'jose.favaron', c: 'mutual', v: { x: -12, y: 31, k: 2.46 }, n: null });
+  assert.deepEqual(parseHash('#g=abc&c=evil&v=1,2'), { g: 'abc', p: null, c: null, v: null, n: null });
   assert.equal(parseHash('#other'), null);
   // old links carried only the graph
-  assert.deepEqual(parseHash('#g=abc'), { g: 'abc', p: null, c: null, v: null });
+  assert.deepEqual(parseHash('#g=abc'), { g: 'abc', p: null, c: null, v: null, n: null });
+});
+
+test('group names survive the link, including separators and odd characters', async () => {
+  const { buildHash, parseHash } = await import('../extension/lib/share.js');
+  const names = ['School | 2010', '', 'Work & co, Ñandú 🎉', '', ''];
+  const hash = buildHash({ g: 'abc', n: names });
+  assert.equal(hash.split('&').length, 2); // trailing empty names dropped
+  assert.deepEqual(parseHash(hash).n, ['School | 2010', '', 'Work & co, Ñandú 🎉']);
+  assert.equal(buildHash({ g: 'abc', n: ['', ''] }), '#g=abc'); // nothing named: no n=
+  assert.equal(parseHash(buildHash({ g: 'a', n: ['x'.repeat(80)] })).n[0].length, 30);
+  assert.deepEqual(parseHash('#g=a&n=%E0%A4%A').n, ['']); // broken escape: empty, not a crash
 });

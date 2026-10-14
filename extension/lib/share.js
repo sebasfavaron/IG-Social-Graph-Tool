@@ -88,13 +88,21 @@ export async function decodeGraph(encoded) {
 
 // The rest of the view rides along after the graph:
 //   #g=<graph>&p=<selected username>&c=<follower|following|mutual>&v=<x>,<y>,<zoom>
+//   &n=<name of group 1>|<name of group 2>|…   (empty = unnamed; groups are numbered by size)
 // v is the view centre relative to the layout's centroid; it is left out until the
 // viewer moves the view by hand, so a fresh link fits whatever screen opens it.
-export function buildHash({ g, p, c, v }) {
+export const MAX_GROUP_NAME = 30;
+
+export function buildHash({ g, p, c, v, n }) {
   const parts = [`g=${g}`];
   if (p) parts.push(`p=${encodeURIComponent(p)}`);
   if (p && c) parts.push(`c=${c}`);
   if (v) parts.push(`v=${Math.round(v.x)},${Math.round(v.y)},${+v.k.toFixed(2)}`);
+  if (n?.some(Boolean)) {
+    const names = n.map((name) => encodeURIComponent((name || '').slice(0, MAX_GROUP_NAME)));
+    while (names.length && !names[names.length - 1]) names.pop();
+    parts.push(`n=${names.join('|')}`);
+  }
   return `#${parts.join('&')}`;
 }
 
@@ -108,5 +116,21 @@ export function parseHash(hash) {
     p: params.get('p') || null,
     c: ['follower', 'following', 'mutual'].includes(category) ? category : null,
     v: [x, y, k].every(Number.isFinite) && k > 0 ? { x, y, k } : null,
+    n: groupNames(hash),
   };
+}
+
+// Read raw, not through URLSearchParams: it would decode an escaped "|" inside a name
+// before the split.
+function groupNames(hash) {
+  const raw = hash.slice(1).split('&').find((part) => part.startsWith('n='));
+  return raw ? raw.slice(2).split('|').map((name) => safeDecode(name).slice(0, MAX_GROUP_NAME)) : null;
+}
+
+function safeDecode(text) {
+  try {
+    return decodeURIComponent(text);
+  } catch (_) {
+    return '';
+  }
 }
