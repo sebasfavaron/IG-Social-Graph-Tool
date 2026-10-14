@@ -64,3 +64,28 @@ test('group names survive the link, including separators and odd characters', as
   assert.equal(parseHash(buildHash({ g: 'a', n: ['x'.repeat(80)] })).n[0].length, 30);
   assert.deepEqual(parseHash('#g=a&n=%E0%A4%A').n, ['']); // broken escape: empty, not a crash
 });
+
+test('a follow back costs bits, not a second link', async () => {
+  // the same 60 pairs, once one-way and once both ways
+  const ids = Array.from({ length: 40 }, (_, i) => `p${i}`);
+  const pairs = [];
+  for (let i = 0; i < 40; i++) for (let j = i + 1; j < 40; j += 7) pairs.push([ids[i], ids[j]]);
+  const oneWay = { nodes: ids.map((id) => ({ id })), links: pairs.map(([s, t]) => ({ source: s, target: t })) };
+  const both = { ...oneWay, links: pairs.flatMap(([s, t]) => [{ source: s, target: t }, { source: t, target: s }]) };
+  const a = (await encodeGraph(oneWay)).length;
+  const b = (await encodeGraph(both)).length;
+  assert.ok(b <= a * 1.1, `both ways ${b} vs one way ${a}`);
+  const decoded = await decodeGraph(await encodeGraph(both));
+  assert.equal(decoded.links.length, pairs.length * 2);
+});
+
+test('the owner is restored and their links come back from the per-person bits', async () => {
+  const graph = {
+    username: 'me',
+    nodes: ['me', 'a', 'b', 'c'].map((id) => ({ id })),
+    links: [['a', 'me'], ['b', 'me'], ['me', 'a'], ['me', 'c'], ['a', 'b']].map(([source, target]) => ({ source, target })),
+  };
+  const decoded = await decodeGraph(await encodeGraph(graph));
+  assert.equal(decoded.username, 'me');
+  assert.deepEqual(edges(decoded), edges(graph));
+});

@@ -1,18 +1,29 @@
+import { friendGroups } from './groups.js';
+
 // Packs a graph into the part of a link after "#", which browsers never send to the
-// server, so a shared graph needs no storage. Format (version 1), before compression:
+// server, so a shared graph needs no storage. Built for these graphs rather than general
+// ones (462 people / 10 062 links: 15 384 characters in version 1, 9 802 here):
 //
-//   1                      version
-//   <username>             whose circle it is (may be empty)
-//   <id 0> ... <id n-1>    one username per line, sorted
-//   (empty line)
-//   <adjacency>            per source id, in order: ";"-separated lists of who it follows,
-//                          as base36 gaps between sorted target indexes ("," separated)
+// - most follows go both ways, so each pair is stored once with a 2-bit direction;
+// - the owner follows/is followed by nearly everyone, so their links are 2 bits per person
+//   instead of an edge list;
+// - people are numbered friend group by friend group, breadth-first, so the people a
+//   person is connected to get nearby numbers and the gaps between them stay small.
 //
-// then deflate-raw and base64url. ~15k characters for 462 people / 9 661 links.
+// Version 2, as bytes before deflate-raw + base64url:
+//   2                                     version
+//   varint  owner index + 1 (0 = none)
+//   names   '\n'-separated in numbering order, then a 0 byte
+//   bits    2 per person: follows the owner (1) | the owner follows them (2)
+//   per person i, links to people j > i other than the owner:
+//           varint count, then varint gaps (j - previous - 1, previous starts at i)
+//   bits    2 per pair, in the same order: i follows j (1) | j follows i (2)
+// Breaking changes are fine for now: version 1 links no longer open.
 
 export const SHARE_PREFIX = '#g=';
 // Where share links point, also when made from inside the extension.
 export const SHARE_BASE_URL = 'https://sebasfavaron.github.io/IG-Social-Graph-Tool/';
+const VERSION = 2;
 
 async function pipe(bytes, stream) {
   const out = await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer();
@@ -34,53 +45,163 @@ function fromBase64Url(text) {
 
 const idOf = (end) => (typeof end === 'object' ? end.id : end);
 
-export async function encodeGraph({ nodes, links, username = '' }) {
-  const ids = [...new Set(nodes.map((n) => n.id))].sort();
-  const index = new Map(ids.map((id, i) => [id, i]));
-  const follows = ids.map(() => []);
-  for (const link of links) {
-    const s = index.get(idOf(link.source));
-    const t = index.get(idOf(link.target));
-    if (s !== undefined && t !== undefined) follows[s].push(t);
+class Writer {
+  bytes = [];
+  varint(v) {
+    while (v >= 128) {
+      this.bytes.push((v & 127) | 128);
+      v >>>= 7;
+    }
+    this.bytes.push(v);
   }
-  const adjacency = follows
-    .map((targets) => {
-      let prev = -1;
-      return [...new Set(targets)]
-        .sort((a, b) => a - b)
-        .map((t) => {
-          const gap = t - prev;
-          prev = t;
-          return gap.toString(36);
-        })
-        .join(',');
-    })
-    .join(';');
-  const text = ['1', username || '', ...ids, '', adjacency].join('\n');
-  const packed = await pipe(new TextEncoder().encode(text), new CompressionStream('deflate-raw'));
+  twoBits(values) {
+    for (let i = 0; i < values.length; i += 4) {
+      let b = 0;
+      for (let k = 0; k < 4 && i + k < values.length; k++) b |= (values[i + k] & 3) << (2 * k);
+      this.bytes.push(b);
+    }
+  }
+}
+
+class Reader {
+  constructor(bytes) {
+    this.bytes = bytes;
+    this.at = 0;
+  }
+  byte() {
+    if (this.at >= this.bytes.length) throw new Error('link data ends early');
+    return this.bytes[this.at++];
+  }
+  varint() {
+    let v = 0;
+    for (let shift = 0; ; shift += 7) {
+      const b = this.byte();
+      v += (b & 127) * 2 ** shift;
+      if (b < 128) return v;
+      if (shift > 28) throw new Error('broken number in link data');
+    }
+  }
+  twoBits(count) {
+    const out = new Array(count);
+    for (let i = 0; i < count; i += 4) {
+      const b = this.byte();
+      for (let k = 0; k < 4 && i + k < count; k++) out[i + k] = (b >> (2 * k)) & 3;
+    }
+    return out;
+  }
+}
+
+// Friend group by friend group (largest first), breadth-first inside each, the most
+// connected first at every step; the owner goes last. Deterministic.
+function numbering(ids, neighbours, owner) {
+  const { groupOf } = friendGroups(
+    { nodes: ids.map((id) => ({ id })), links: [...neighbours].flatMap(([s, set]) => [...set].map((t) => ({ source: s, target: t }))) },
+    { exclude: owner }
+  );
+  const group = (id) => (id === owner ? Infinity : groupOf.has(id) ? groupOf.get(id) : 1000);
+  const degree = (id) => neighbours.get(id).size;
+  const byPriority = (a, b) => group(a) - group(b) || degree(b) - degree(a) || (a < b ? -1 : a > b ? 1 : 0);
+  const seen = new Set();
+  const order = [];
+  for (const start of [...ids].sort(byPriority)) {
+    if (seen.has(start)) continue;
+    seen.add(start);
+    const queue = [start];
+    for (let q = 0; q < queue.length; q++) {
+      const v = queue[q];
+      order.push(v);
+      const next = [...neighbours.get(v)].filter((w) => !seen.has(w) && group(w) === group(v)).sort(byPriority);
+      for (const w of next) {
+        seen.add(w);
+        queue.push(w);
+      }
+    }
+  }
+  return order;
+}
+
+export async function encodeGraph({ nodes, links, username = '' }) {
+  const ids = [...new Set(nodes.map((n) => n.id))];
+  const present = new Set(ids);
+  const owner = present.has(username) ? username : null;
+  const follows = new Set(); // "s\0t"
+  const neighbours = new Map(ids.map((id) => [id, new Set()])); // undirected, owner left out
+  for (const link of links) {
+    const s = idOf(link.source);
+    const t = idOf(link.target);
+    if (s === t || !present.has(s) || !present.has(t)) continue;
+    follows.add(`${s}\0${t}`);
+    if (s !== owner && t !== owner) {
+      neighbours.get(s).add(t);
+      neighbours.get(t).add(s);
+    }
+  }
+  const order = numbering(ids, neighbours, owner);
+  const index = new Map(order.map((id, i) => [id, i]));
+
+  const w = new Writer();
+  w.bytes.push(VERSION);
+  w.varint(owner === null ? 0 : index.get(owner) + 1);
+  for (const b of new TextEncoder().encode(order.join('\n'))) w.bytes.push(b);
+  w.bytes.push(0);
+  if (owner !== null) {
+    w.twoBits(order.map((id) => (follows.has(`${id}\0${owner}`) ? 1 : 0) | (follows.has(`${owner}\0${id}`) ? 2 : 0)));
+  }
+  const directions = [];
+  order.forEach((id, i) => {
+    const later = [...neighbours.get(id)].map((other) => index.get(other)).filter((j) => j > i).sort((a, b) => a - b);
+    w.varint(later.length);
+    let previous = i;
+    for (const j of later) {
+      w.varint(j - previous - 1);
+      previous = j;
+      directions.push((follows.has(`${id}\0${order[j]}`) ? 1 : 0) | (follows.has(`${order[j]}\0${id}`) ? 2 : 0));
+    }
+  });
+  w.twoBits(directions);
+  const packed = await pipe(new Uint8Array(w.bytes), new CompressionStream('deflate-raw'));
   return toBase64Url(packed);
 }
 
 export async function decodeGraph(encoded) {
-  const bytes = await pipe(fromBase64Url(encoded), new DecompressionStream('deflate-raw'));
-  const lines = new TextDecoder().decode(bytes).split('\n');
-  if (lines[0] !== '1') throw new Error(`unknown share format "${lines[0]}"`);
-  const username = lines[1] || undefined;
-  const blank = lines.indexOf('', 2);
-  const ids = lines.slice(2, blank);
-  const adjacency = lines.slice(blank + 1).join('\n');
+  const r = new Reader(await pipe(fromBase64Url(encoded), new DecompressionStream('deflate-raw')));
+  const version = r.byte();
+  if (version !== VERSION) throw new Error(`made by a different version of the viewer (format ${version})`);
+  const ownerPlusOne = r.varint();
+  const nameBytes = [];
+  for (let b = r.byte(); b !== 0; b = r.byte()) nameBytes.push(b);
+  const text = new TextDecoder().decode(new Uint8Array(nameBytes));
+  const ids = text ? text.split('\n') : [];
+  if (ownerPlusOne > ids.length) throw new Error('broken link data');
+  const owner = ownerPlusOne ? ids[ownerPlusOne - 1] : null;
   const links = [];
-  adjacency.split(';').forEach((row, s) => {
-    let t = -1;
-    for (const gap of row ? row.split(',') : []) {
-      t += parseInt(gap, 36);
-      if (ids[s] === undefined || ids[t] === undefined) throw new Error('broken link data');
-      links.push({ source: ids[s], target: ids[t], value: 1 });
+  const add = (source, target) => links.push({ source, target, value: 1 });
+  if (owner !== null) {
+    r.twoBits(ids.length).forEach((bits, i) => {
+      if (ids[i] === owner) return;
+      if (bits & 1) add(ids[i], owner);
+      if (bits & 2) add(owner, ids[i]);
+    });
+  }
+  const pairs = [];
+  for (let i = 0; i < ids.length; i++) {
+    const count = r.varint();
+    let previous = i;
+    for (let c = 0; c < count; c++) {
+      const j = previous + 1 + r.varint();
+      if (j >= ids.length) throw new Error('broken link data');
+      pairs.push([i, j]);
+      previous = j;
     }
+  }
+  r.twoBits(pairs.length).forEach((bits, p) => {
+    const [i, j] = pairs[p];
+    if (bits & 1) add(ids[i], ids[j]);
+    if (bits & 2) add(ids[j], ids[i]);
   });
   return {
-    username,
-    metadata: { loggedUsername: username, generatedBy: 'share-link' },
+    username: owner ?? undefined,
+    metadata: { loggedUsername: owner ?? undefined, generatedBy: 'share-link' },
     nodes: ids.map((id) => ({ id, group: 1 })),
     links,
   };

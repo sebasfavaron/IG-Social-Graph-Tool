@@ -29,7 +29,7 @@ Requests go from an instagram.com tab with your own session, and the data stays 
 
 ### Share links
 
-A share link carries the graph inside itself, after the `#`, which browsers never send to a server, so nothing is stored anywhere: ~15 000 characters for 462 people and 9 661 connections. It also keeps who is selected, which group is kept on, the zoom and your friend-group names. On the site the address bar always holds the current link, so copying it from there works too. Anyone who gets the link sees those usernames and who follows whom.
+A share link carries the graph inside itself, after the `#`, which browsers never send to a server, so nothing is stored anywhere: ~10 000 characters for 462 people and 10 000 connections. The format is built for these graphs: each pair of people is stored once with its direction, your own links are two bits per person, and people are numbered friend group by friend group so the people someone is connected to get nearby numbers. It also keeps who is selected, which group is kept on, the zoom and your friend-group names. On the site the address bar always holds the current link, so copying it from there works too. Anyone who gets the link sees those usernames and who follows whom.
 
 The site is the extension's viewer, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it.
 
