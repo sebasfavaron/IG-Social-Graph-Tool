@@ -1,5 +1,5 @@
 import { toGraph } from './lib/crawler.js';
-import { drawGraph } from './lib/graphVisualizer.js';
+import { drawGraph } from './lib/graphCanvas.js';
 import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
 import { SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
@@ -19,7 +19,8 @@ let viewTouched = false; // the view goes in the link only once someone zoomed o
 const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 // encodedGraph: the packed form when the graph came from a link, so it is not redone.
-function show(graph, { encodedGraph = null } = {}) {
+// Resolves once the layout is in, so callers can select and move the view.
+async function show(graph, { encodedGraph = null } = {}) {
   const username = graph.username || graph.metadata?.loggedUsername;
   const total = graph.nodes.length;
   const pruned = pruneLoneNodes(graph);
@@ -41,8 +42,10 @@ function show(graph, { encodedGraph = null } = {}) {
   full.links.sort((a, b) => byId(a.source, b.source) || byId(a.target, b.target));
   const kept = new Set(pruned.nodes.map((n) => n.id));
   const hidden = new Set(full.nodes.map((n) => n.id).filter((id) => !kept.has(id)));
-  d3.select('svg').selectAll('*').remove();
-  graphControl = pruned.nodes.length ? drawGraph(full, { onViewChange, hidden }) : null;
+  graphControl?.destroy();
+  graphControl = pruned.nodes.length
+    ? drawGraph($('graph'), full, { hidden, onViewChange, onSelectionChange })
+    : null;
   shown = graphControl ? { ...full, username } : null;
   $('share').hidden = !shown;
   pinned = null;
@@ -62,6 +65,13 @@ function show(graph, { encodedGraph = null } = {}) {
   }
   updateLegend();
   closeSearch();
+  await graphControl?.ready;
+}
+
+// a click on the graph selected or cleared someone
+function onSelectionChange() {
+  pinned = null;
+  updateLegend();
 }
 
 // The address bar always holds a link to what is on screen (on the public page; an
@@ -145,21 +155,8 @@ for (const item of legendItems) {
     updateLegend();
   };
 }
-// Header clicks must not reach the body handler that clears the selection.
-document.querySelector('header').addEventListener('click', (e) => e.stopPropagation());
-// Any click on the graph selects or clears a person (the node handler stops propagation,
-// hence capture); drop the pin and refresh the counts once the graph has handled it.
-document.querySelector('svg').addEventListener(
-  'click',
-  () => {
-    pinned = null;
-    setTimeout(updateLegend);
-  },
-  true
-);
 
-// structuredClone: d3 replaces link endpoints with node objects, so each run needs fresh data
-$('example').onclick = () => show(structuredClone(EXAMPLE_GRAPH));
+$('example').onclick = () => show(EXAMPLE_GRAPH);
 
 // Share: the graph on screen and how it is being looked at travel inside the link (after
 // "#", never sent to a server). From the extension the link points at the public page.
@@ -167,7 +164,7 @@ async function openShareHash() {
   const state = parseHash(location.hash);
   if (!state?.g) return false;
   try {
-    if (state.g !== encoded) show(await decodeGraph(state.g), { encodedGraph: state.g });
+    if (state.g !== encoded) await show(await decodeGraph(state.g), { encodedGraph: state.g });
   } catch (err) {
     alert(`This share link looks cut off or broken (${err.message}). Ask for it again.`);
     return false;
@@ -321,6 +318,6 @@ if (!inExtension) {
 }
 if (!(await openShareHash())) {
   const { crawl } = inExtension ? await chrome.storage.local.get('crawl') : {};
-  if (crawl) show(toGraph(crawl));
+  if (crawl) await show(toGraph(crawl));
   else $('empty').hidden = false;
 }

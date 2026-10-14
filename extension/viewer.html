@@ -16,10 +16,11 @@
         font: 13px/1.4 system-ui, sans-serif;
         color: #1b1b1b;
       }
-      svg {
+      #graph {
         display: block;
         width: 100vw;
         height: 100vh;
+        touch-action: none;
       }
       header {
         position: fixed;
@@ -145,6 +146,7 @@
       }
     </style>
     <script src="vendor/d3.v4.min.js"></script>
+    <script src="lib/forces.js"></script>
   </head>
   <body>
     <header>
@@ -168,7 +170,7 @@
         <button id="example">Try an example</button>
       </div>
     </div>
-    <svg></svg>
+    <canvas id="graph"></canvas>
     <script type="module" src="viewer.js"></script>
   </body>
 </html>

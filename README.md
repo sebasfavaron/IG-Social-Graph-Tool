@@ -31,6 +31,7 @@ Everything stays in your browser: requests go from an instagram.com tab with you
 
 - `extension/lib/crawler.js` has the crawl logic with no `chrome.*` calls; `npm test` runs it, and the share-link format, against a fake Instagram.
 - After editing, hit the reload icon on the extension's card in `chrome://extensions`.
+- The viewer draws on one `<canvas>` (`extension/lib/graphCanvas.js`) and lays the graph out in a Web Worker (`lib/layoutWorker.js`, forces in `lib/forces.js`). Finished layouts are cached in `localStorage` per graph, so reopening a link skips the layout. Bump `LAYOUT_VERSION` in `forces.js` when the forces change, or old cached layouts get reused.
 - Endpoints used (web app id `936619743392459`): `/api/v1/friendships/{pk}/followers/` and `/api/v1/friendships/{pk}/mutual_followers/`, paginated with `max_id` / `next_max_id`.
 
 ### Credits
