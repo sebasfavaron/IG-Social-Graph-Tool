@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { encodeGraph, decodeGraph } from '../extension/lib/share.js';
 import { EXAMPLE_GRAPH } from '../extension/lib/example.js';
 
@@ -13,8 +12,23 @@ test('example graph survives a round trip', async () => {
   assert.deepEqual(edges(decoded), edges(EXAMPLE_GRAPH));
 });
 
+// Same size as a real crawl (462 people, 9 661 links): four friend groups plus "me",
+// seeded so the encoded length is stable.
+function clusteredGraph() {
+  let seed = 7;
+  const rand = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+  const ids = Array.from({ length: 461 }, (_, i) => `user_${((i * 7919) % 9973).toString(36)}.${i % 4}`);
+  const links = ids.map((id) => ({ source: id, target: 'me' }));
+  while (links.length < 9661) {
+    const a = Math.floor(rand() * 461);
+    const b = Math.floor(rand() * 461);
+    if (a !== b && (a % 4 === b % 4 || rand() < 0.05)) links.push({ source: ids[a], target: ids[b] });
+  }
+  return { username: 'me', nodes: [{ id: 'me' }, ...ids.map((id) => ({ id }))], links };
+}
+
 test('real-sized graph stays a usable link, duplicates collapse, d3-mutated links work', async () => {
-  const graph = JSON.parse(readFileSync(new URL('../public/ig-social-data-sebas.json', import.meta.url)));
+  const graph = clusteredGraph();
   const unique = new Set(graph.links.map((l) => `${l.source}>${l.target}`));
   // d3 replaces link endpoints with node objects once a graph is drawn
   const drawn = { ...graph, links: graph.links.map((l) => ({ source: { id: l.source }, target: { id: l.target } })) };
