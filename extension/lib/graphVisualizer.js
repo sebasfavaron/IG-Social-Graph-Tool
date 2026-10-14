@@ -18,7 +18,9 @@ export function drawGraph({ nodes, links }) {
   const textsDy = 0.35;
   const mainColor = 'black';
   const secondaryColor = 'white';
-  const linkOpacity = 0.04;
+  // ~0.04 for a few thousand links (where they pile up into clusters); small graphs need
+  // their few lines visible
+  const linkOpacity = Math.min(0.35, Math.max(0.04, 4 / Math.sqrt(links.length || 1)));
   const linkColor = '#868585';
 
   // Set up the SVG element and add the nodes and links

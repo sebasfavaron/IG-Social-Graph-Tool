@@ -1,5 +1,6 @@
 import { toGraphJson } from './lib/crawler.js';
 import { drawGraph } from './lib/graphVisualizer.js';
+import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
 
 const $ = (id) => document.getElementById(id);
@@ -35,7 +36,9 @@ function show(graph) {
   $('title').textContent = username ? `@${username}` : 'IG Social Graph';
   $('counts').textContent =
     `${pruned.nodes.length} people · ${pruned.links.length} connections` +
-    (total > pruned.nodes.length ? ` · ${total - pruned.nodes.length} loners hidden` : '') +
+    (total > pruned.nodes.length
+      ? ` · ${total - pruned.nodes.length} ${total - pruned.nodes.length === 1 ? 'loner' : 'loners'} hidden`
+      : '') +
     (graph.metadata?.complete === false ? ' · partial' : '');
   $('empty').hidden = pruned.nodes.length > 0;
   d3.select('svg').selectAll('*').remove();
@@ -108,6 +111,8 @@ async function openFile(file) {
   }
 }
 $('file').onchange = () => openFile($('file').files[0]);
+// structuredClone: d3 replaces link endpoints with node objects, so each run needs fresh data
+$('example').onclick = () => show(structuredClone(EXAMPLE_GRAPH));
 
 
 // Search: type part of a username; the highlighted match is selected in the graph as you
@@ -220,7 +225,7 @@ document.addEventListener('drop', (e) => {
 // Pages) there is no chrome.storage and the page waits for a file.
 const inExtension = typeof chrome !== 'undefined' && !!chrome.storage?.local;
 if (!inExtension) {
-  $('empty').textContent =
+  $('empty-text').textContent =
     'Drop an IG Social Graph JSON export here, or use "Open JSON…". The file stays in your browser.';
 }
 const { crawl } = inExtension ? await chrome.storage.local.get('crawl') : {};

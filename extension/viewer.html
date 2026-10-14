@@ -132,7 +132,11 @@
         display: grid;
         place-items: center;
         color: #6b6b6b;
+        text-align: center;
         pointer-events: none;
+      }
+      #empty button {
+        pointer-events: auto;
       }
     </style>
     <script src="vendor/d3.v4.min.js"></script>
@@ -153,7 +157,12 @@
         ><span data-cat="mutual" hidden style="--c: purple">mutual</span>
       </span>
     </header>
-    <div id="empty" hidden>No graph yet. Run a crawl from the extension popup, or open a JSON export.</div>
+    <div id="empty" hidden>
+      <div>
+        <p id="empty-text">No graph yet. Run a crawl from the extension popup, or open a JSON export.</p>
+        <button id="example">Try an example</button>
+      </div>
+    </div>
     <svg></svg>
     <script type="module" src="viewer.js"></script>
   </body>
