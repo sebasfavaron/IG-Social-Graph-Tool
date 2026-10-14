@@ -131,8 +131,16 @@ const LABELS = {
   following: (name, n) => `@${name} follows ${n}`,
   mutual: (name, n) => (n ? `@${name} and ${n} follow each other` : 'no mutual follows'),
 };
-const shorten = (name) => (name.length > 22 ? `${name.slice(0, 21)}…` : name);
+const shorten = (name, max = 22) => (name.length > max ? `${name.slice(0, max - 1)}…` : name);
 let lastSelected = null;
+const narrow = matchMedia('(max-width: 700px)');
+// phones show one group at a time, as tabs; picking a tab also shows only its lines
+let sheetTab = null;
+const TAB_LABELS = {
+  mutual: (name, n) => `Each other · ${n}`,
+  follower: (name, n) => `Follow them · ${n}`,
+  following: (name, n) => `They follow · ${n}`,
+};
 
 function personButton(id) {
   const li = document.createElement('li');
@@ -147,7 +155,10 @@ function updatePanel() {
   const selected = graphControl?.selected() ?? null;
   const people = selected ? graphControl.people() : null;
   if (!people) pinned = null;
-  if (selected !== lastSelected) expanded.clear();
+  if (selected !== lastSelected) {
+    expanded.clear();
+    sheetTab = null;
+  }
   $('panel').hidden = !people;
   document.body.classList.toggle('selected', !!people);
   $('hint').hidden = !!people;
@@ -184,6 +195,18 @@ function updatePanel() {
         section.dataset.rendered = String(expanded.has(cat));
       }
     }
+    // tabs (phones): default to the first group with anyone in it
+    if (!sheetTab || !people[sheetTab].length) {
+      sheetTab = pinned || ['mutual', 'follower', 'following'].find((c) => people[c].length) || 'mutual';
+    }
+    for (const tab of document.querySelectorAll('[data-tab]')) {
+      const cat = tab.dataset.tab;
+      tab.querySelector('.label').textContent = TAB_LABELS[cat](selected, people[cat].length);
+      tab.setAttribute('aria-selected', String(cat === sheetTab));
+      tab.classList.toggle('only', pinned === cat);
+      tab.disabled = people[cat].length === 0;
+    }
+    for (const section of sections) section.classList.toggle('active', section.dataset.cat === sheetTab);
     if (selected !== lastSelected) {
       const c = graphControl.counts();
       $('announce').textContent =
@@ -211,10 +234,33 @@ for (const section of sections) {
   };
 }
 
-function choosePerson(id) {
-  if (!graphControl?.focus(id)) return;
+for (const tab of document.querySelectorAll('[data-tab]')) {
+  tab.onclick = () => {
+    const cat = tab.dataset.tab;
+    // first tap on a tab: show its list and only its lines; tapping it again: all lines
+    pinned = sheetTab === cat && pinned === cat ? null : cat;
+    sheetTab = cat;
+    graphControl?.showOnly(pinned);
+    updatePanel();
+  };
+}
+$('sheet-handle').onclick = () => {
+  const folded = document.body.classList.toggle('sheet-folded');
+  $('sheet-handle').setAttribute('aria-expanded', String(!folded));
+  $('sheet-handle').setAttribute('aria-label', folded ? 'Unfold panel' : 'Fold panel');
+};
+
+// Select someone and pan to them. The panel is filled first, so the pan centres the
+// person in the space its real size leaves free (on phones it is sized to its content).
+function focusPerson(id) {
+  if (!graphControl?.select(id)) return false;
   pinned = null;
   updatePanel();
+  return graphControl.focus(id);
+}
+
+function choosePerson(id) {
+  focusPerson(id);
 }
 
 function clearSelection() {
@@ -228,10 +274,11 @@ $('panel-close').onclick = () => {
 };
 
 // where the panel covers the graph, so focusing someone centres them in what is left
+// (it may not be on screen yet when this is asked, hence the estimate)
 function panelInsets() {
-  return matchMedia('(max-width: 700px)').matches
-    ? { right: 0, bottom: Math.round(innerHeight * 0.46) }
-    : { right: 340, bottom: 0 }; // panel: 300 wide + padding, border and its 10px gap
+  if (!narrow.matches) return { right: 340, bottom: 0 }; // 300 wide + padding, border, 10px gap
+  const shown = !$('panel').hidden && $('panel').offsetHeight;
+  return { right: 0, bottom: shown || (document.body.classList.contains('sheet-folded') ? 90 : Math.round(innerHeight * 0.4)) };
 }
 
 // ---- friend groups key: renameable, names saved in the link ------------------------
@@ -253,8 +300,15 @@ function saveGroupNames() {
   syncUrl();
 }
 
+let groupsKeyShown = false;
 function renderGroups() {
   $('groups').hidden = groups.sizes.length < 2;
+  $('groups-count').textContent = `(${groups.sizes.length})`;
+  // open on desktop, folded on phones the first time; after that it stays as the user left it
+  if (!groupsKeyShown && !$('groups').hidden) {
+    $('groups').open = !narrow.matches;
+    groupsKeyShown = true;
+  }
   $('groups-list').replaceChildren(
     ...groups.sizes.map((n, i) => {
       const li = document.createElement('li');
@@ -358,7 +412,7 @@ async function openShareHash() {
   if (state.p) {
     // with a saved view, select in place; without one, pan to the person like search does
     if (state.v) graphControl.select(state.p);
-    else graphControl.focus(state.p);
+    else focusPerson(state.p);
     pinned = state.c;
     if (pinned) graphControl.showOnly(pinned);
   }
@@ -443,17 +497,12 @@ function preview() {
   const id = matches[active];
   if (!id) return;
   previewTimer = setTimeout(() => {
-    if (graphControl?.focus(id)) {
-      pinned = null;
-      updatePanel();
-    }
+    focusPerson(id);
   }, 150);
 }
 
 function choose(id) {
-  if (!graphControl?.focus(id)) return;
-  pinned = null;
-  updatePanel();
+  if (!focusPerson(id)) return;
   search.value = id;
   closeSearch();
   search.blur();

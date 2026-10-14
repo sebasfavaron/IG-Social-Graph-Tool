@@ -329,9 +329,16 @@
       #groups[hidden] {
         display: none;
       }
-      #groups h2 {
-        font-size: 12px;
-        margin: 0 0 4px;
+      #groups summary {
+        font-weight: 700;
+        cursor: pointer;
+        margin-bottom: 4px;
+      }
+      #groups:not([open]) summary {
+        margin-bottom: 0;
+      }
+      .narrow-only {
+        display: none;
       }
       #groups ol {
         list-style: none;
@@ -399,21 +406,45 @@
         color: inherit;
       }
 
-      /* phones: the panel becomes a bottom sheet, the top bar gets shorter */
+      /* phones: two-row top bar, folded groups key, bottom sheet with tabs */
       @media (max-width: 700px) {
-        header {
-          right: 10px;
-          max-width: none;
-        }
         .wide-only {
-          display: none;
+          display: none !important;
         }
-        header > #counts {
+        .narrow-only {
+          display: revert;
+        }
+        header {
+          top: 8px;
+          left: 8px;
+          right: 8px;
+          max-width: none;
+          gap: 6px;
+          padding: 6px 8px;
+        }
+        header > * {
           white-space: normal;
+        }
+        .headline {
+          flex: 1 1 100%;
+          min-width: 0;
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+        .search {
+          flex: 1;
+          min-width: 0;
         }
         .search input,
         .search input:focus {
-          width: 140px;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        #groups {
+          left: 8px;
+          bottom: 8px;
+          max-width: 60vw;
         }
         #panel {
           top: auto;
@@ -421,8 +452,80 @@
           right: 0;
           bottom: 0;
           width: auto;
-          max-height: 46vh;
+          max-height: 40vh;
+          padding: 4px 12px 12px;
           border-radius: 14px 14px 0 0;
+          border-bottom: 0;
+        }
+        #sheet-handle {
+          display: block;
+          width: 100%;
+          height: 18px;
+          padding: 0;
+          border: 0;
+          background: none;
+          position: relative;
+        }
+        #sheet-handle::before {
+          content: '';
+          position: absolute;
+          left: calc(50% - 18px);
+          top: 6px;
+          width: 36px;
+          height: 4px;
+          border-radius: 2px;
+          background: var(--line);
+        }
+        .avatar {
+          width: 32px;
+          height: 32px;
+          font-size: 14px;
+        }
+        .tabs {
+          display: flex;
+          gap: 6px;
+          margin-top: 10px;
+          overflow-x: auto;
+          scrollbar-width: none;
+        }
+        .tabs button {
+          flex: none;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          border-radius: 999px;
+          padding: 4px 10px;
+          color: var(--muted);
+        }
+        .tabs button[aria-selected='true'] {
+          color: var(--fg);
+          border-color: var(--c);
+          box-shadow: inset 0 0 0 1px var(--c);
+        }
+        .tabs button.only::after {
+          content: 'only';
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: var(--muted);
+        }
+        #panel section {
+          display: none;
+          margin-top: 8px;
+        }
+        #panel section.active {
+          display: block;
+        }
+        .group-toggle {
+          display: none;
+        }
+        #panel li button {
+          padding: 2px 8px;
+          font-size: 12px;
+        }
+        body.sheet-folded .tabs,
+        body.sheet-folded #panel section {
+          display: none !important;
         }
         body.selected #groups {
           display: none;
@@ -439,8 +542,7 @@
   </head>
   <body>
     <header class="panel-box">
-      <strong id="title">IG Social Graph</strong>
-      <span id="counts" class="muted"></span>
+      <div class="headline"><strong id="title">IG Social Graph</strong> <span id="counts" class="muted"></span></div>
       <div class="search" role="search">
         <label for="search" class="sr-only">Find a person</label>
         <input
@@ -457,13 +559,14 @@
         <ul id="results" role="listbox" aria-label="Matching people" hidden></ul>
       </div>
       <button id="share" hidden title="Anyone with the link can see these usernames and who follows whom">
-        Copy share link
+        <span class="wide-only">Copy share link</span><span class="narrow-only">Share</span>
       </button>
       <button id="theme" aria-label="Switch to dark theme" title="Switch theme">☾</button>
       <span id="hint" class="muted wide-only">Click someone to see who follows whom · Esc clears</span>
     </header>
 
     <aside id="panel" class="panel-box" hidden aria-labelledby="panel-name">
+      <button id="sheet-handle" class="narrow-only" aria-label="Fold panel" aria-expanded="true"></button>
       <div class="who">
         <div class="avatar" id="avatar" aria-hidden="true"></div>
         <div>
@@ -471,6 +574,11 @@
           <a id="profile" target="_blank" rel="noopener">Open on Instagram ↗</a>
         </div>
         <button id="panel-close" aria-label="Clear selection (Esc)" title="Clear selection (Esc)">×</button>
+      </div>
+      <div class="tabs narrow-only" role="tablist" aria-label="Groups">
+        <button role="tab" data-tab="mutual" style="--c: var(--mutual)"><span class="swatch"></span><span class="label"></span></button>
+        <button role="tab" data-tab="follower" style="--c: var(--follower)"><span class="swatch"></span><span class="label"></span></button>
+        <button role="tab" data-tab="following" style="--c: var(--following)"><span class="swatch"></span><span class="label"></span></button>
       </div>
       <section data-cat="mutual" style="--c: var(--mutual)">
         <button class="group-toggle" aria-pressed="false"><span class="swatch"></span><span class="label"></span></button>
@@ -486,10 +594,10 @@
       </section>
     </aside>
 
-    <aside id="groups" class="panel-box" hidden aria-labelledby="groups-title">
-      <h2 id="groups-title">Friend groups</h2>
+    <details id="groups" class="panel-box" hidden>
+      <summary id="groups-title">Friend groups <span id="groups-count" class="muted"></span></summary>
       <ol id="groups-list"></ol>
-    </aside>
+    </details>
 
     <div id="announce" class="sr-only" aria-live="polite"></div>
 

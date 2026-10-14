@@ -19,9 +19,9 @@ export function drawGraph(
   { hidden = new Set(), groupOf = new Map(), theme, insets = () => ({ right: 0, bottom: 0 }), onViewChange, onSelectionChange } = {}
 ) {
   const mobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  const nodeRadius = mobile ? 5 : 2;
-  const maxRadius = nodeRadius * 6;
-  const textSize = mobile ? 15 : 12;
+  const nodeRadius = mobile ? 3.5 : 2;
+  const maxRadius = nodeRadius * 5;
+  const textSize = mobile ? 13 : 12;
   const linkWidth = mobile ? 1.5 : 1;
   const nodeStroke = mobile ? 1.5 : 1;
   const textDx = 6;
@@ -31,13 +31,14 @@ export function drawGraph(
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let colors = theme;
 
-  const ctx = canvas.getContext('2d');
+  let ctx = canvas.getContext('2d');
   const canvasSel = d3.select(canvas);
   let width = 0;
   let height = 0;
   let dpr = 1;
   function resize() {
-    dpr = window.devicePixelRatio || 1;
+    // phones report 3x; 2x looks the same on a graph and is 44% fewer pixels to fill
+    dpr = Math.min(2, window.devicePixelRatio || 1);
     width = canvas.clientWidth || window.innerWidth;
     height = canvas.clientHeight || window.innerHeight;
     canvas.width = Math.round(width * dpr);
@@ -131,7 +132,15 @@ export function drawGraph(
     });
   }
 
-  const radiusOf = (n) => (n === selection?.node ? n.r * 1.6 + 2 : n.r);
+  // On-screen dot size: n.r when zoomed in, shrinking when zoomed out so dots stay smaller
+  // than the gaps between them (people sit ~20 graph units apart); hubs are capped by
+  // the same gap, or they swallow their neighbours.
+  function dotRadius(n) {
+    const k = transform.k;
+    const shrink = Math.min(1, (8 * k) / nodeRadius);
+    return Math.max(1, Math.min(n.r, Math.max(nodeRadius * 1.5, 9 * k)) * shrink);
+  }
+  const radiusOf = (n) => (n === selection?.node ? Math.max(dotRadius(n) + 3, nodeRadius * 2) : dotRadius(n));
   const labelX = (n, k) => n.x + (radiusOf(n) + textDx) / k;
 
   function arrowhead(l, k) {
@@ -198,7 +207,46 @@ export function drawGraph(
     return placed;
   }
 
+  // ---- gestures: move a picture instead of redrawing 10k lines every frame ----------
+  // While a pan, pinch, wheel or animated move is running, frames reuse a snapshot of the
+  // scene (rendered once, with a margin around the screen, at 1x) and only move and
+  // scale it; the full-quality frame comes back when the gesture ends. A slight blur
+  // while moving, but smooth on phones.
+  const SNAPSHOT_MARGIN = 0.5; // extra screen size on each side, for panning/zooming out
+  let gesture = null; // { start: transform, events, snap }
+
+  function makeSnapshot(t0) {
+    const m = SNAPSHOT_MARGIN;
+    const w = width * (1 + 2 * m);
+    const h = height * (1 + 2 * m);
+    const ratio = mobile ? 1 : Math.min(dpr, 1.5);
+    const snap = document.createElement('canvas');
+    snap.width = Math.round(w * ratio);
+    snap.height = Math.round(h * ratio);
+    const saved = { ctx, transform, width, height, dpr };
+    ctx = snap.getContext('2d');
+    transform = d3.zoomIdentity.translate(t0.x + m * width, t0.y + m * height).scale(t0.k);
+    width = w;
+    height = h;
+    dpr = ratio;
+    drawScene();
+    ({ ctx, transform, width, height, dpr } = saved);
+    return { canvas: snap, t0 };
+  }
+
   function draw() {
+    const snap = gesture?.snap;
+    if (!snap) return drawScene();
+    const m = SNAPSHOT_MARGIN;
+    const r = transform.k / snap.t0.k;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = colors.bg;
+    ctx.fillRect(0, 0, width, height);
+    ctx.setTransform(dpr * r, 0, 0, dpr * r, dpr * (transform.x - r * snap.t0.x), dpr * (transform.y - r * snap.t0.y));
+    ctx.drawImage(snap.canvas, -m * width, -m * height, width * (1 + 2 * m), height * (1 + 2 * m));
+  }
+
+  function drawScene() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, width, height);
@@ -222,8 +270,10 @@ export function drawGraph(
     const onScreen = (n) => n.x >= left && n.x <= right && n.y >= top && n.y <= bottom;
 
     // every link, faint; on the dark theme they add up into a glow
-    if (colors.glow) ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = colors.glow ? Math.min(0.5, linkOpacity * 3.5) : linkOpacity;
+    // ('lighter' blending is slow on phones, so they get the plain version)
+    const glow = colors.glow && !mobile;
+    if (glow) ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = glow ? Math.min(0.5, linkOpacity * 3.5) : colors.glow ? linkOpacity * 2 : linkOpacity;
     ctx.strokeStyle = colors.link;
     ctx.lineWidth = linkWidth / k;
     ctx.beginPath();
@@ -252,11 +302,13 @@ export function drawGraph(
     // the selected person's links, by category, with arrowheads on the followed end;
     // mutual links are heavier, so the three groups differ by more than colour
     if (showSel) {
-      ctx.globalAlpha = 0.85;
+      // hundreds of strong lines turn into a solid wash: fade them as their number grows
+      const drawn = Object.entries(showSel.links).reduce((sum, [c, l]) => sum + (only && only !== c ? 0 : l.length), 0);
+      ctx.globalAlpha = Math.max(0.25, Math.min(0.85, 0.85 * Math.sqrt(40 / Math.max(1, drawn))));
       for (const [cat, catLinks] of Object.entries(showSel.links)) {
         if (only && only !== cat) continue;
         ctx.strokeStyle = ctx.fillStyle = colors[cat];
-        ctx.lineWidth = (cat === 'mutual' ? linkWidth * 2 : linkWidth) / k;
+        ctx.lineWidth = (cat === 'mutual' ? linkWidth * 1.6 : linkWidth) / k;
         ctx.beginPath();
         for (const l of catLinks) {
           ctx.moveTo(l.source.x, l.source.y);
@@ -290,7 +342,7 @@ export function drawGraph(
       for (const [fill, batch] of batches) {
         ctx.beginPath();
         for (const n of batch) {
-          const r = n.r / k;
+          const r = radiusOf(n) / k;
           ctx.moveTo(n.x + r, n.y);
           ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
         }
@@ -375,8 +427,18 @@ export function drawGraph(
   const zoom = d3
     .zoom()
     .scaleExtent([0.01, 40])
+    .on('start', () => {
+      gesture = { start: transform, events: 0, snap: null };
+    })
+    .on('end', () => {
+      gesture = null;
+      redraw();
+    })
     .on('zoom', () => {
       transform = d3.event.transform;
+      // a one-off jump (fit, restoring a link's view) never needs the snapshot; from the
+      // second step of a real gesture on, frames use it
+      if (gesture && ++gesture.events === 2 && laidOut) gesture.snap = makeSnapshot(gesture.start);
       redraw();
       onViewChange?.(!!d3.event.sourceEvent);
     });
@@ -538,8 +600,16 @@ export function drawGraph(
       if (!n) return false;
       selectNode(n);
       if (!laidOut) return true;
-      const k = Math.max(transform.k, 2);
+      // zoom so most of their people fit around them (the farthest 10% may stay off
+      // screen: loners sit far out), between a wide view and a close one
       const { right, bottom } = insets();
+      const free = Math.min(width - right, height - bottom - 60);
+      const distances = [...revealed]
+        .filter((m) => m !== n)
+        .map((m) => Math.hypot(m.x - n.x, m.y - n.y))
+        .sort((a, b) => a - b);
+      const reach = distances.length ? distances[Math.floor((distances.length - 1) * 0.9)] : 0;
+      const k = reach ? Math.max(0.3, Math.min(2.5, (0.45 * free) / reach)) : Math.max(transform.k, 2);
       const cx = (width - right) / 2;
       const cy = (height - bottom) / 2;
       canvasSel
