@@ -79,6 +79,8 @@ export function drawGraph(
   let selection = null;
   let only = null; // one category, or null for all three
   let revealed = new Set(); // people shown at full strength for the current selection
+  let hoverGroup = null; // friend group index being pointed at in the key: it takes over the view
+  let showSel = null; // the selection as drawn this frame (null while a group is hovered)
 
   function selectNode(node) {
     if (!node) {
@@ -165,9 +167,10 @@ export function drawGraph(
         for (let gy = Math.floor(y0 / cell); gy <= Math.floor(y1 / cell); gy++) out.push(`${gx},${gy}`);
       return out;
     };
+    const important = (n) => (hoverGroup !== null ? n.group === hoverGroup : revealed.has(n));
     const order = visible
-      .filter((n) => n !== selection?.node)
-      .sort((a, b) => revealed.has(b) - revealed.has(a) || b.degree - a.degree);
+      .filter((n) => n !== showSel?.node)
+      .sort((a, b) => important(b) - important(a) || b.degree - a.degree);
     for (const n of order) {
       const x0 = labelX(n, k);
       const y0 = n.y - h / 2;
@@ -207,6 +210,7 @@ export function drawGraph(
       ctx.textAlign = 'start';
       return;
     }
+    showSel = hoverGroup === null ? selection : null;
     const { x, y, k } = transform;
     ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y);
     // what is on screen, in graph coordinates, with a margin for labels
@@ -231,11 +235,25 @@ export function drawGraph(
     ctx.stroke();
     ctx.globalCompositeOperation = 'source-over';
 
+    // a hovered friend group: the lines between its people, in its colour
+    if (hoverGroup !== null) {
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = colors.groups[hoverGroup] || colors.node;
+      ctx.lineWidth = (linkWidth * 1.5) / k;
+      ctx.beginPath();
+      for (const l of links) {
+        if (l.source.group !== hoverGroup || l.target.group !== hoverGroup) continue;
+        ctx.moveTo(l.source.x, l.source.y);
+        ctx.lineTo(l.target.x, l.target.y);
+      }
+      ctx.stroke();
+    }
+
     // the selected person's links, by category, with arrowheads on the followed end;
     // mutual links are heavier, so the three groups differ by more than colour
-    if (selection) {
+    if (showSel) {
       ctx.globalAlpha = 0.85;
-      for (const [cat, catLinks] of Object.entries(selection.links)) {
+      for (const [cat, catLinks] of Object.entries(showSel.links)) {
         if (only && only !== cat) continue;
         ctx.strokeStyle = ctx.fillStyle = colors[cat];
         ctx.lineWidth = (cat === 'mutual' ? linkWidth * 2 : linkWidth) / k;
@@ -255,12 +273,13 @@ export function drawGraph(
     }
 
     // dots, batched by opacity and colour: with a selection, everyone else fades to 0.1
-    const opacity = (n) => (!selection ? 1 : n === selection.node ? 1 : revealed.has(n) ? 0.85 : 0.1);
+    const opacity = (n) =>
+      hoverGroup !== null ? (n.group === hoverGroup ? 1 : 0.1) : (!showSel ? 1 : n === showSel.node ? 1 : revealed.has(n) ? 0.85 : 0.1);
     const visible = nodes.filter((n) => (!n.hidden || revealed.has(n)) && onScreen(n));
     for (const alpha of [0.1, 0.85, 1]) {
       const batches = new Map();
       for (const n of visible) {
-        if (n === selection?.node || opacity(n) !== alpha) continue;
+        if (n === showSel?.node || opacity(n) !== alpha) continue;
         const fill = colors.groups[n.group] || colors.node;
         if (!batches.has(fill)) batches.set(fill, []);
         batches.get(fill).push(n);
@@ -282,7 +301,7 @@ export function drawGraph(
     }
 
     // names, decluttered; hidden when zoomed far out (they would be a few unreadable ones)
-    if (k > 0.25 || selection) {
+    if (k > 0.25 || showSel) {
       const placed = placeLabels(visible, k);
       ctx.font = `${textSize / k}px system-ui, sans-serif`;
       ctx.textBaseline = 'middle';
@@ -294,8 +313,8 @@ export function drawGraph(
     }
 
     // the selected person on top: bigger, outlined, name with a halo
-    if (selection) {
-      const n = selection.node;
+    if (showSel) {
+      const n = showSel.node;
       ctx.globalAlpha = 1;
       ctx.beginPath();
       ctx.arc(n.x, n.y, radiusOf(n) / k, 0, 2 * Math.PI);
@@ -404,8 +423,25 @@ export function drawGraph(
   function onClick(e) {
     if (!laidOut) return;
     const rect = canvas.getBoundingClientRect();
-    selectNode(nodeAt(e.clientX - rect.left, e.clientY - rect.top));
+    const n = nodeAt(e.clientX - rect.left, e.clientY - rect.top);
+    selectNode(n);
     onSelectionChange?.();
+    if (n) keepClearOfPanel(n);
+  }
+
+  // The panel opens over the right edge (bottom on phones): someone clicked there would
+  // end up under their own panel, so pan them to the middle of the free area, same zoom.
+  function keepClearOfPanel(n) {
+    const { right, bottom } = insets();
+    const margin = 24 + (n.r + textDx) * 2;
+    const sx = transform.applyX(n.x);
+    const sy = transform.applyY(n.y);
+    if (sx < width - right - margin && sy < height - bottom - margin) return;
+    const k = transform.k;
+    canvasSel
+      .transition()
+      .duration(reduceMotion.matches ? 0 : 400)
+      .call(zoom.transform, d3.zoomIdentity.translate((width - right) / 2 - k * n.x, (height - bottom) / 2 - k * n.y).scale(k));
   }
   canvas.addEventListener('click', onClick);
   window.addEventListener('resize', resize);
@@ -479,6 +515,11 @@ export function drawGraph(
     // usernames per category for the selected person
     people: selectedGroups,
     clear: () => selectNode(null),
+    // null when the pointer leaves the group in the key
+    highlightGroup: (index) => {
+      hoverGroup = index ?? null;
+      redraw();
+    },
     setTheme: (next) => {
       colors = next;
       redraw();

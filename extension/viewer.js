@@ -231,7 +231,7 @@ $('panel-close').onclick = () => {
 function panelInsets() {
   return matchMedia('(max-width: 700px)').matches
     ? { right: 0, bottom: Math.round(innerHeight * 0.46) }
-    : { right: 320, bottom: 0 };
+    : { right: 340, bottom: 0 }; // panel: 300 wide + padding, border and its 10px gap
 }
 
 // ---- friend groups key: renameable, names saved in the link ------------------------
@@ -280,6 +280,13 @@ function renderGroups() {
       count.className = 'n';
       count.textContent = n;
       li.append(dot, input, count);
+      // pointing at a group (or editing its name) highlights its people in the graph
+      const on = () => graphControl?.highlightGroup(i);
+      const off = () => graphControl?.highlightGroup(null);
+      li.addEventListener('mouseenter', on);
+      li.addEventListener('mouseleave', () => document.activeElement !== input && off());
+      input.addEventListener('focus', on);
+      input.addEventListener('blur', off);
       return li;
     })
   );
