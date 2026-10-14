@@ -118,12 +118,46 @@ async function detectViewer() {
   const cookie = await chrome.cookies.get({ url: IG_ORIGIN, name: 'ds_user_id' });
   if (!cookie?.value) throw new Error('Not logged in to instagram.com in this browser.');
   const pk = cookie.value;
-  for (const path of [`/api/v1/users/${pk}/info/`, '/api/v1/accounts/current_user/?edit=true']) {
+
+  // The page already knows who is logged in; reading it costs no request.
+  const [fromPage] = await chrome.scripting.executeScript({
+    target: { tabId: await getIgTab() },
+    func: readUsernameFromPage,
+    args: [pk],
+  });
+  if (fromPage?.result) return { pk, username: fromPage.result };
+
+  // The app endpoints below answer "useragent mismatch" to some browsers, hence several.
+  const tried = ['page'];
+  for (const [path, pick] of [
+    ['/api/v1/accounts/edit/web_form_data/', (j) => j?.form_data?.username],
+    [`/api/v1/users/${pk}/info/`, (j) => j?.user?.username],
+    ['/api/v1/accounts/current_user/?edit=true', (j) => j?.user?.username],
+  ]) {
     const res = await api.get(path);
-    const username = res.json?.user?.username;
+    const username = pick(res.json);
     if (username) return { pk, username };
+    const why = res.json?.message || res.snippet?.replace(/\s+/g, ' ').slice(0, 60) || '';
+    tried.push(`${path.split('?')[0]} → ${res.status} ${why}`.trim());
   }
-  throw new Error('Logged in, but could not read your username from Instagram.');
+  throw new Error(`Logged in, but could not read your username. Tried: ${tried.join('; ')}`);
+}
+
+// Runs inside the instagram.com tab. The page's inline JSON carries the viewer as
+// {"pk":"<id>",...,"username":"<name>"} (key order varies); the sidebar's profile
+// link, the only nav link with an avatar, is the fallback.
+function readUsernameFromPage(pk) {
+  const html = document.documentElement.innerHTML;
+  const id = `"(?:pk|id|pk_id|viewerId)":"?${pk}"?`;
+  const name = '"username":"([A-Za-z0-9._]{1,30})"';
+  const match =
+    html.match(new RegExp(`${id}[^{}]{0,500}?${name}`)) ||
+    html.match(new RegExp(`${name}[^{}]{0,500}?${id}`));
+  if (match) return match[1];
+  const avatarLink = [...document.querySelectorAll('nav a[href], [role="navigation"] a[href]')].find(
+    (a) => a.querySelector('img') && /^\/[A-Za-z0-9._]{1,30}\/$/.test(a.getAttribute('href'))
+  );
+  return avatarLink ? avatarLink.getAttribute('href').slice(1, -1) : null;
 }
 
 // ---- Crawl loop -----------------------------------------------------------------
