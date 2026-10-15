@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, step, toGraph, classify } from '../extension/lib/crawler.js';
+import { initialState, step, toGraph, classify, startProfileRefresh } from '../extension/lib/crawler.js';
 import { pruneLoneNodes } from '../extension/lib/prune.js';
 
 // Fake Instagram: me(1) followed by a(2), b(3), c(4), shop(5). Followers paginate 2 per page.
@@ -24,7 +24,15 @@ function fakeApi({ failOn = () => null } = {}) {
         const start = Number(maxId || 0);
         const page = pks.slice(start, start + 2);
         const next = start + 2 < pks.length ? String(start + 2) : undefined;
-        return { status: 200, json: { users: page.map((pk) => ({ pk, username: users[pk] })), next_max_id: next, status: 'ok' } };
+        const user = (pk) => ({
+          pk,
+          username: users[pk],
+          full_name: `${users[pk].toUpperCase()} Person`,
+          profile_pic_url: `https://scontent.cdninstagram.com/${users[pk]}.jpg`,
+          is_private: pk === '3',
+          is_verified: pk === '5',
+        });
+        return { status: 200, json: { users: page.map(user), next_max_id: next, status: 'ok' } };
       }
       if ((m = url.pathname.match(/friendships\/(\d+)\/mutual_followers/))) {
         const pages = mutuals[m[1]];
@@ -132,4 +140,30 @@ test('time left counts Instagram cooldowns but not user pauses', async () => {
   assert.equal(est.measured, true);
   // 17 min for 20 followers = 51 s each, 80 left
   assert.equal(Math.round(est.ms / 1000), 80 * 51);
+});
+
+test('names, photos and flags come along with the lists at no extra request', async () => {
+  const state = initialState(me);
+  await runToEnd(state, fakeApi());
+  assert.deepEqual(state.profiles.b, {
+    name: 'B Person',
+    pic: 'https://scontent.cdninstagram.com/b.jpg',
+    private: true,
+    verified: false,
+  });
+  assert.equal(state.profiles.shop.verified, true);
+});
+
+test('a profile refresh on an old crawl fills profiles and leaves the graph alone', async () => {
+  const state = initialState(me);
+  await runToEnd(state, fakeApi());
+  delete state.profiles; // a crawl from before profiles were kept
+  const links = toGraph(state).links.length;
+  const api = fakeApi();
+  startProfileRefresh(state);
+  assert.deepEqual(await runToEnd(state, api), { done: true });
+  assert.equal(api.calls.length, 2); // the two pages of the followers list, nothing else
+  assert.equal(state.refresh, null);
+  assert.deepEqual(Object.keys(state.profiles).sort(), ['a', 'b', 'c', 'shop']);
+  assert.equal(toGraph(state).links.length, links);
 });

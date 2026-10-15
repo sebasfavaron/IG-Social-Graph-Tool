@@ -1,4 +1,4 @@
-import { IG_APP_ID, STATUS, estimateRemaining, initialState, progress, step, tickClock } from './lib/crawler.js';
+import { IG_APP_ID, STATUS, estimateRemaining, initialState, progress, startProfileRefresh, step, tickClock } from './lib/crawler.js';
 
 // The service worker owns the crawl state; popup and viewer only send messages.
 // Requests are made from inside an instagram.com tab (chrome.scripting) so they carry
@@ -6,6 +6,7 @@ import { IG_APP_ID, STATUS, estimateRemaining, initialState, progress, step, tic
 // the tab, because Chrome throttles timers in hidden tabs to one per minute.
 
 const STORAGE_KEY = 'crawl';
+const THUMBS_KEY = 'thumbs'; // username -> { src, data }: small copies of profile photos
 const IG_ORIGIN = 'https://www.instagram.com';
 const COOLDOWN_BASE_MIN = 15;
 const COOLDOWN_MAX_MIN = 120;
@@ -163,6 +164,68 @@ function readUsernameFromPage(pk) {
   return avatarLink ? avatarLink.getAttribute('href').slice(1, -1) : null;
 }
 
+// ---- Profile photos ---------------------------------------------------------------
+// Instagram's photo URLs are signed and expire within days, so the viewer gets a copy:
+// 64 px JPEG data URLs (~2.5 KB each) in their own storage key, away from the crawl state
+// that is rewritten after every request. They come from Instagram's CDN, not its API, so
+// they do not count against the crawl's pacing; a few at a time is still polite.
+const THUMB_PX = 64;
+const THUMB_CONCURRENCY = 3;
+let thumbing = false;
+let thumbs = null; // kept in memory: the crawl loop asks for missing photos after every step
+
+async function makeThumb(src) {
+  const res = await fetch(src, { credentials: 'omit' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const bitmap = await createImageBitmap(await res.blob());
+  const canvas = new OffscreenCanvas(THUMB_PX, THUMB_PX);
+  const ctx = canvas.getContext('2d');
+  // centre square crop (photos are square already, but not guaranteed)
+  const side = Math.min(bitmap.width, bitmap.height);
+  ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, THUMB_PX, THUMB_PX);
+  bitmap.close();
+  const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:image/jpeg;base64,${btoa(binary)}`;
+}
+
+// Downloads the photos still missing. A URL that failed once is not retried until a
+// profile refresh brings a new one.
+async function downloadThumbs() {
+  await load();
+  if (thumbing || !state?.profiles) return;
+  thumbing = true;
+  try {
+    thumbs ??= (await chrome.storage.local.get(THUMBS_KEY))[THUMBS_KEY] || {};
+    const todo = Object.entries(state.profiles).filter(
+      ([username, p]) => p.pic && !thumbs[username]?.data && thumbs[username]?.src !== p.pic
+    );
+    let sinceSave = 0;
+    const worker = async () => {
+      for (let item; (item = todo.shift()); ) {
+        const [username, { pic }] = item;
+        let data = null;
+        try {
+          data = await makeThumb(pic);
+        } catch (_) {}
+        thumbs[username] = { src: pic, data };
+        if (++sinceSave >= 25) {
+          sinceSave = 0;
+          await chrome.storage.local.set({ [THUMBS_KEY]: thumbs });
+        }
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    };
+    if (!todo.length) return;
+    await Promise.all(Array.from({ length: THUMB_CONCURRENCY }, worker));
+    await chrome.storage.local.set({ [THUMBS_KEY]: thumbs });
+  } finally {
+    thumbing = false;
+  }
+}
+
 // ---- Crawl loop -----------------------------------------------------------------
 
 const FATAL_MESSAGES = {
@@ -194,6 +257,7 @@ async function runLoop() {
       if (result.done) {
         state.status = STATUS.DONE;
         state.error = null;
+        downloadThumbs();
       } else if (result.fatal) {
         state.status = STATUS.ERROR;
         state.error = FATAL_MESSAGES[result.fatal] || result.fatal;
@@ -207,6 +271,8 @@ async function runLoop() {
       } else if (result.wait) {
         // jitter so the requests do not tick like a metronome
         await save();
+        // the followers list is in: their photos can come down while the crawl goes on
+        if (state.phase !== 'followers' && !state.refresh) downloadThumbs();
         await sleep(result.wait * (0.75 + Math.random() * 0.5));
         continue;
       }
@@ -238,6 +304,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
   // The worker can be stopped between steps; the watchdog picks the crawl back up.
   if (alarm.name === 'watchdog' && state.status === STATUS.RUNNING && !looping) runLoop();
+  // ...and the photo downloads, which a stopped worker leaves half done
+  if (alarm.name === 'watchdog' && state.phase !== 'followers') downloadThumbs();
 });
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -263,6 +331,8 @@ function summary() {
     startedAt: state.startedAt,
     updatedAt: state.updatedAt,
     remaining: estimateRemaining(state),
+    refreshing: !!state.refresh,
+    profiles: Object.keys(state.profiles || {}).length,
     ...progress(state),
   };
 }
@@ -285,6 +355,15 @@ const handlers = {
     await setStatus(STATUS.RUNNING);
     return summary();
   },
+  // Real names and photos for a crawl made before they were kept: the followers list
+  // again (one request per 50), then the photos.
+  async refreshProfiles() {
+    if (!state) throw new Error('Nothing to refresh.');
+    startProfileRefresh(state);
+    state.error = null;
+    await setStatus(STATUS.RUNNING);
+    return summary();
+  },
   async pause() {
     await setStatus(STATUS.PAUSED);
     return summary();
@@ -293,8 +372,9 @@ const handlers = {
     if (state) state.status = STATUS.IDLE;
     wakeSleep?.();
     state = null;
+    thumbs = {};
     chrome.alarms.clear('cooldown');
-    await chrome.storage.local.remove(STORAGE_KEY);
+    await chrome.storage.local.remove([STORAGE_KEY, THUMBS_KEY]);
     await updateBadge();
     return null;
   },

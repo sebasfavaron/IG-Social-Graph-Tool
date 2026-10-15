@@ -1,10 +1,14 @@
 {
   "manifest_version": 3,
   "name": "IG Social Graph",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Maps who-follows-whom among your Instagram followers and draws it as an interactive graph. Runs locally in your browser.",
   "permissions": ["scripting", "storage", "unlimitedStorage", "alarms", "cookies"],
-  "host_permissions": ["https://www.instagram.com/*"],
+  "host_permissions": [
+    "https://www.instagram.com/*",
+    "https://*.cdninstagram.com/*",
+    "https://*.fbcdn.net/*"
+  ],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": { "default_popup": "popup.html", "default_title": "IG Social Graph" },
   "icons": { "128": "icon128.png" }

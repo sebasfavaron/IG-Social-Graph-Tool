@@ -5,6 +5,10 @@
 //   - for every such follower F, Instagram's "followed by" list (accounts *I* follow
 //     that also follow F) gives links  M -> F
 // One request per page; the caller sleeps between steps.
+//
+// Both lists also carry each account's real name, photo URL, private and verified flags;
+// they are kept in state.profiles at no extra request. A crawl made before that can
+// fill them with a "profiles" pass: the followers list again, about one request per 50.
 
 export const IG_APP_ID = '936619743392459';
 
@@ -28,6 +32,7 @@ export function initialState(viewer, settings = {}) {
     phase: 'followers', // followers -> mutuals -> done
     followersCursor: null,
     followers: {}, // pk -> { username, done }
+    profiles: {}, // username -> { name, pic, private, verified }
     order: [], // follower pks, in the order they were found
     current: null, // { pk, cursor, retries }
     nodes: { [viewer.username]: true },
@@ -66,6 +71,25 @@ export function classify(res) {
   return { kind: 'retry', reason: `HTTP ${res.status} ${msg}`.trim() };
 }
 
+function keepProfile(state, user) {
+  if (!user?.username) return;
+  state.profiles ??= {};
+  // the same person shows up in many lists; a field one list leaves out keeps its value
+  const known = state.profiles[user.username] || { name: '', pic: '', private: false, verified: false };
+  state.profiles[user.username] = {
+    name: user.full_name ?? known.name,
+    pic: user.profile_pic_url ?? known.pic,
+    private: user.is_private ?? known.private,
+    verified: user.is_verified ?? known.verified,
+  };
+}
+
+// Starts a pass over the followers list that only refreshes profiles; step() runs it
+// before anything else and then returns to where the crawl was.
+export function startProfileRefresh(state) {
+  state.refresh = { cursor: null, retries: 0 };
+}
+
 function addLink(state, source, target) {
   state.nodes[source] = true;
   state.nodes[target] = true;
@@ -85,10 +109,25 @@ function nextPendingFollower(state) {
 export async function step(state, api) {
   const delay = state.settings.delaySec * 1000;
 
+  if (state.refresh) {
+    const res = await api.get(followersPath(state, state.refresh.cursor));
+    state.requests++;
+    const verdict = classify(res);
+    if (verdict.kind === 'fatal') return { fatal: verdict.reason };
+    if (verdict.kind === 'cooldown') return { cooldown: true };
+    if (verdict.kind !== 'ok') {
+      // optional pass: give up quietly rather than stop the crawl
+      if (++state.refresh.retries >= MAX_RETRIES) state.refresh = null;
+      return { wait: delay * 2 };
+    }
+    for (const user of res.json.users || []) keepProfile(state, user);
+    state.refresh = res.json.next_max_id ? { cursor: res.json.next_max_id, retries: 0 } : null;
+    if (!state.refresh && state.phase === 'done') return { done: true };
+    return { wait: delay };
+  }
+
   if (state.phase === 'followers') {
-    const params = new URLSearchParams({ count: '50', search_surface: 'follow_list_page' });
-    if (state.followersCursor) params.set('max_id', state.followersCursor);
-    const res = await api.get(`/api/v1/friendships/${state.viewer.pk}/followers/?${params}`);
+    const res = await api.get(followersPath(state, state.followersCursor));
     state.requests++;
     const verdict = classify(res);
     if (verdict.kind !== 'ok') return handleNotOk(state, verdict, () => {});
@@ -99,6 +138,7 @@ export async function step(state, api) {
         state.followers[pk] = { username: user.username, done: false };
         state.order.push(pk);
       }
+      keepProfile(state, user);
       addLink(state, user.username, state.viewer.username);
     }
     state.followersRetries = 0;
@@ -131,7 +171,10 @@ export async function step(state, api) {
       });
     }
 
-    for (const user of res.json.users || []) addLink(state, user.username, target);
+    for (const user of res.json.users || []) {
+      keepProfile(state, user);
+      addLink(state, user.username, target);
+    }
     const next = res.json.next_max_id;
     if (next && next !== cursor) {
       state.current.cursor = next;
@@ -143,6 +186,12 @@ export async function step(state, api) {
   }
 
   return { done: true };
+}
+
+function followersPath(state, cursor) {
+  const params = new URLSearchParams({ count: '50', search_surface: 'follow_list_page' });
+  if (cursor) params.set('max_id', cursor);
+  return `/api/v1/friendships/${state.viewer.pk}/followers/?${params}`;
 }
 
 function handleNotOk(state, verdict, skipCurrent) {
@@ -165,6 +214,7 @@ function handleNotOk(state, verdict, skipCurrent) {
 }
 
 // The graph the viewer draws and the share link packs: { username, nodes, links }.
+// Profiles travel next to it (state.profiles), not inside: share links carry usernames only.
 export function toGraph(state) {
   const me = state.viewer.username;
   const seen = new Set();

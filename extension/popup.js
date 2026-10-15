@@ -24,7 +24,8 @@ function formatDuration(ms) {
 }
 
 const STATUS_TEXT = {
-  running: (s) => (s.phase === 'followers' ? 'Listing your followers…' : 'Checking who follows whom…'),
+  running: (s) =>
+    s.refreshing ? 'Fetching names and photos…' : s.phase === 'followers' ? 'Listing your followers…' : 'Checking who follows whom…',
   paused: () => 'Paused.',
   cooldown: (s) => `Waiting for Instagram — resumes at ${new Date(s.cooldownUntil).toLocaleTimeString()}.`,
   done: () => 'Done.',
@@ -41,6 +42,10 @@ function render(s) {
   $('start').textContent = has ? 'Start over' : 'Start';
   $('resume').hidden = !has || !['paused', 'error', 'cooldown'].includes(s.status);
   $('pause').hidden = !has || !['running', 'cooldown'].includes(s.status);
+  // crawls made before names and photos were kept have none; a worker older than this
+  // popup sends no count at all, so the button stays hidden for it
+  $('profiles').hidden = !has || s.status !== 'done' || s.profiles === undefined;
+  $('profiles').textContent = s?.profiles ? 'Refresh names & photos' : 'Get names & photos';
   $('view').disabled = $('share').disabled = !has || s.links === 0;
   $('error').hidden = !s?.error || s.status === 'running';
   $('error').textContent = s?.error || '';
@@ -91,6 +96,7 @@ $('start').onclick = () => {
 };
 $('resume').onclick = () => act(() => send('resume', { settings: settings() }));
 $('pause').onclick = () => act(() => send('pause'));
+$('profiles').onclick = () => act(() => send('refreshProfiles'));
 $('reset').onclick = () => {
   if (confirm('Delete everything collected so far?')) act(() => send('reset'));
 };
