@@ -179,7 +179,8 @@ function paintWho(selected) {
     .filter(Boolean)
     .join(' · ');
   $('panel-meta').hidden = !$('panel-meta').textContent;
-  if (photos.has(selected)) {
+  const hasPhoto = photos.has(selected);
+  if (hasPhoto) {
     const img = new Image();
     img.src = photos.get(selected);
     img.alt = '';
@@ -187,7 +188,119 @@ function paintWho(selected) {
   } else {
     $('avatar').textContent = (selected.match(/[a-z0-9]/i)?.[0] || '@').toUpperCase();
   }
+  $('avatar').disabled = !hasPhoto;
+  if (hasPhoto) $('avatar').setAttribute('aria-label', `Show @${selected}'s photo larger`);
+  else $('avatar').removeAttribute('aria-label');
+  $('avatar').title = hasPhoto ? 'Show larger' : '';
 }
+
+// ---- enlarged photo ------------------------------------------------------------------
+// The panel's round photo grows into a big one (the motion starts from the avatar's own
+// place and size, and goes back there on close). It shows the saved 64 px copy at once,
+// blurred, and swaps in the full-size photo when the extension has fetched it (one
+// Instagram request per person, kept for the session).
+const largePhotos = new Map(); // username -> Promise<data URL>
+function largePhoto(username) {
+  if (!inExtension || !chrome.runtime?.sendMessage) return Promise.reject(new Error('needs the extension'));
+  if (!largePhotos.has(username)) {
+    const p = chrome.runtime.sendMessage({ type: 'profilePhoto', username }).then((res) => {
+      if (!res?.ok) throw new Error(res?.error || 'no answer');
+      return res.data;
+    });
+    p.catch(() => largePhotos.delete(username));
+    largePhotos.set(username, p);
+  }
+  return largePhotos.get(username);
+}
+
+const photoDialog = $('photo-dialog');
+const big = $('photo-big');
+let photoFor = null;
+const motion = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1);
+
+// where the avatar is, as a transform of the big photo's final box
+function fromAvatar(box) {
+  const a = $('avatar').getBoundingClientRect();
+  return `translate(${a.left - box.left}px, ${a.top - box.top}px) scale(${a.width / box.width})`;
+}
+
+function openPhoto() {
+  const username = graphControl?.selected();
+  if (!username || !photos.has(username)) return;
+  photoFor = username;
+  const side = Math.min(innerWidth - 32, innerHeight - 120, 520);
+  const box = { left: (innerWidth - side) / 2, top: (innerHeight - side) / 2 - 16, width: side };
+  Object.assign(big.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${side}px`, height: `${side}px` });
+  big.src = photos.get(username);
+  big.classList.add('low');
+  const name = nameOf(username);
+  const caption = $('photo-caption');
+  caption.style.top = `${box.top + side + 14}px`;
+  caption.replaceChildren(`@${username}`);
+  if (name) {
+    const span = document.createElement('span');
+    span.className = 'muted';
+    span.textContent = ` · ${name}`;
+    caption.append(span);
+  }
+  photoDialog.showModal();
+  const ms = 380 * motion();
+  const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+  big.animate(
+    [{ transform: fromAvatar(box), borderRadius: '50%' }, { transform: 'none', borderRadius: '16px' }],
+    { duration: ms, easing: ease }
+  );
+  photoDialog.animate({ opacity: [0, 1] }, { duration: ms * 0.8, pseudoElement: '::backdrop' });
+  caption.animate({ opacity: [0, 1], transform: ['translateY(6px)', 'none'] }, { duration: ms, delay: ms * 0.4, fill: 'backwards' });
+  largePhoto(username)
+    .then((src) => {
+      if (photoFor !== username) return;
+      const sharp = new Image();
+      sharp.onload = () => {
+        if (photoFor !== username) return;
+        big.src = src;
+        big.classList.remove('low');
+      };
+      sharp.src = src;
+    })
+    .catch(() => photoFor === username && big.classList.remove('low'));
+}
+
+let closing = false;
+function closePhoto() {
+  if (!photoDialog.open || closing) return;
+  closing = true;
+  photoFor = null;
+  // the final box from its style, not its current rect: a close during the opening
+  // motion would otherwise measure a half-grown photo
+  const box = { left: parseFloat(big.style.left), top: parseFloat(big.style.top), width: parseFloat(big.style.width) };
+  const ms = 280 * motion();
+  const ease = 'cubic-bezier(0.4, 0, 0.6, 1)';
+  big.getAnimations().forEach((a) => a.cancel());
+  const held = [
+    $('photo-caption').animate({ opacity: [1, 0] }, { duration: ms * 0.5, fill: 'forwards' }),
+    photoDialog.animate({ opacity: [1, 0] }, { duration: ms, pseudoElement: '::backdrop', fill: 'forwards' }),
+    big.animate([{ transform: 'none', borderRadius: '16px' }, { transform: fromAvatar(box), borderRadius: '50%' }], {
+      duration: ms,
+      easing: ease,
+      fill: 'forwards',
+    }),
+  ];
+  const done = () => {
+    photoDialog.close();
+    held.forEach((a) => a.cancel());
+    closing = false;
+    $('avatar').focus();
+  };
+  held[2].finished.then(done, done);
+}
+
+$('avatar').onclick = openPhoto;
+photoDialog.onclick = closePhoto; // the photo, the caption or the dark around it
+photoDialog.addEventListener('cancel', (e) => {
+  e.preventDefault(); // Esc: close with the same motion
+  closePhoto();
+});
 
 function updatePanel() {
   const selected = graphControl?.selected() ?? null;
@@ -505,6 +618,7 @@ updateThemeButton();
 
 // Esc clears the selection (search handles its own Esc)
 document.addEventListener('keydown', (e) => {
+  if (photoDialog.open) return; // Esc closes the photo first, the selection after
   if (e.key === 'Escape' && document.activeElement !== $('search') && graphControl?.hasSelection()) {
     clearSelection();
   }

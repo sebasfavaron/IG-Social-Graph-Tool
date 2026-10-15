@@ -184,11 +184,35 @@ async function makeThumb(src) {
   const side = Math.min(bitmap.width, bitmap.height);
   ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, THUMB_PX, THUMB_PX);
   bitmap.close();
-  const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+  return toDataUrl(await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 }));
+}
+
+async function toDataUrl(blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return `data:image/jpeg;base64,${btoa(binary)}`;
+  return `data:${blob.type || 'image/jpeg'};base64,${btoa(binary)}`;
+}
+
+// One person's photo at full size, for the viewer's enlarged photo. The lists only carry a
+// 150 px version, so this asks Instagram for the profile (one request, only when someone
+// taps a photo) and falls back to the list's URL if that does not answer.
+async function largePhoto(username) {
+  const candidates = [];
+  try {
+    const res = await api.get(`/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`);
+    const user = res.json?.data?.user;
+    if (user?.profile_pic_url_hd) candidates.push(user.profile_pic_url_hd);
+    if (user?.profile_pic_url) candidates.push(user.profile_pic_url);
+  } catch (_) {}
+  if (state?.profiles?.[username]?.pic) candidates.push(state.profiles[username].pic);
+  for (const src of candidates) {
+    try {
+      const res = await fetch(src, { credentials: 'omit' });
+      if (res.ok) return toDataUrl(await res.blob());
+    } catch (_) {}
+  }
+  throw new Error('no larger photo available');
 }
 
 // Downloads the photos still missing. A URL that failed once is not retried until a
@@ -363,6 +387,9 @@ const handlers = {
     state.error = null;
     await setStatus(STATUS.RUNNING);
     return summary();
+  },
+  async profilePhoto({ username }) {
+    return largePhoto(username);
   },
   async pause() {
     await setStatus(STATUS.PAUSED);

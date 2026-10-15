@@ -250,6 +250,19 @@
         color: #fff;
         background: linear-gradient(135deg, var(--follower), #cc79a7 55%, var(--following));
       }
+      #avatar {
+        padding: 0;
+        border: 0;
+        overflow: hidden;
+        cursor: default;
+      }
+      #avatar:not(:disabled) {
+        cursor: zoom-in;
+      }
+      #avatar:not(:disabled):hover {
+        background: linear-gradient(135deg, var(--follower), #cc79a7 55%, var(--following));
+        filter: brightness(1.08);
+      }
       .avatar img {
         width: 100%;
         height: 100%;
@@ -279,6 +292,49 @@
         background: var(--chip);
         color: inherit;
         font: inherit;
+      }
+
+      /* ---- enlarged photo: grows out of the panel's avatar (see viewer.js) ---- */
+      #photo-dialog {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        width: 100vw;
+        height: 100vh;
+        max-width: none;
+        max-height: none;
+        background: transparent;
+        overflow: hidden;
+      }
+      #photo-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.72);
+      }
+      #photo-big {
+        position: fixed;
+        display: block;
+        object-fit: cover;
+        border-radius: 16px;
+        background: var(--surface-solid);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+        transform-origin: 0 0;
+        cursor: zoom-out;
+        transition: filter 0.25s;
+      }
+      #photo-big.low {
+        filter: blur(3px);
+      }
+      #photo-caption {
+        position: fixed;
+        left: 0;
+        right: 0;
+        margin: 0;
+        text-align: center;
+        color: #fff;
+        font-size: 15px;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      }
+      #photo-caption .muted {
+        color: rgba(255, 255, 255, 0.75);
       }
 
       /* ---- combine dialog ---- */
@@ -662,7 +718,7 @@
     <aside id="panel" class="panel-box" hidden aria-labelledby="panel-name">
       <button id="sheet-handle" class="narrow-only" aria-label="Fold panel" aria-expanded="true"></button>
       <div class="who">
-        <div class="avatar" id="avatar" aria-hidden="true"></div>
+        <button class="avatar" id="avatar" disabled></button>
         <div>
           <h2 id="panel-name"></h2>
           <p id="panel-meta" class="muted" hidden></p>
@@ -695,6 +751,11 @@
       <summary id="groups-title">Friend groups <span id="groups-count" class="muted"></span></summary>
       <ol id="groups-list"></ol>
     </details>
+
+    <dialog id="photo-dialog" aria-labelledby="photo-caption">
+      <img id="photo-big" alt="" />
+      <p id="photo-caption"></p>
+    </dialog>
 
     <dialog id="combine-dialog" class="panel-box" aria-labelledby="combine-title">
       <form id="combine-form">
