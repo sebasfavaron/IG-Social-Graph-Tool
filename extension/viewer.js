@@ -4,7 +4,7 @@ import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
 import { friendGroups } from './lib/groups.js';
 import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
-import { downloadGist, packShare, seal, unpackShare, unseal, uploadGist } from './lib/vault.js';
+import { downloadShare, packShare, seal, unpackShare, unseal, uploadShare } from './lib/vault.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { CIRCLE, circles, mergeGraphs } from './lib/merge.js';
 
@@ -88,7 +88,7 @@ async function show(graph, { encodedGraph = null, fullShare = null } = {}) {
   );
   $('share').hidden = !shown;
   $('combine').hidden = !shown || !username || !!partner;
-  $('share-full').hidden = !inExtension || !shown;
+  $('share-full').hidden = !shown || (!photos.size && !Object.keys(profiles).length);
   $('uncombine').hidden = !beforeMerge;
   if (beforeMerge) $('uncombine').querySelector('.label').textContent = `@${beforeMerge.username} only`;
   pinned = null;
@@ -634,38 +634,23 @@ document.addEventListener('keydown', (e) => {
 
 $('example').onclick = () => show(EXAMPLE_GRAPH);
 
-// ---- full share: names and photos too, encrypted into a secret gist (vault.js) -------
+// ---- full share: names and photos too, encrypted, in the share storage (vault.js) ---
 async function openFullShare(ref, key) {
-  return unpackShare(await unseal(await downloadGist(ref), key));
+  return unpackShare(await unseal(await downloadShare(ref), key));
 }
 
 const uploadDialog = $('upload-dialog');
-const TOKEN_KEY = 'githubToken';
-let lastUpload = null; // { shown, ref, key }: sharing the same graph again reuses its gist
-const savedToken = async () => (await chrome.storage.local.get(TOKEN_KEY))[TOKEN_KEY] || '';
+let lastUpload = null; // { shown, ref, key }: sharing the same graph again reuses its upload
 
-async function prepareUploadDialog() {
-  const token = await savedToken();
-  $('token-row').hidden = !!token;
-  $('forget-token').hidden = !token;
-  $('gh-token').value = '';
-  $('gh-token').required = !token;
+$('share-full').onclick = () => {
   $('upload-error').hidden = true;
   $('upload-result').hidden = true;
   $('upload-status').textContent = '';
   $('upload-go').disabled = false;
   $('upload-go').hidden = false;
-}
-$('share-full').onclick = async () => {
-  await prepareUploadDialog();
   uploadDialog.showModal();
 };
 $('upload-cancel').onclick = () => uploadDialog.close();
-$('forget-token').onclick = async () => {
-  await chrome.storage.local.remove(TOKEN_KEY);
-  lastUpload = null;
-  await prepareUploadDialog();
-};
 $('upload-copy').onclick = async () => {
   $('upload-link').select();
   try {
@@ -682,8 +667,6 @@ $('upload-form').onsubmit = async (e) => {
   $('upload-error').hidden = true;
   $('upload-go').disabled = true;
   try {
-    const typed = $('gh-token').value.trim();
-    const token = typed || (await savedToken());
     if (lastUpload?.shown !== shown) {
       status('Encrypting…');
       const ids = new Set(shown.nodes.map((n) => n.id));
@@ -693,15 +676,12 @@ $('upload-form').onsubmit = async (e) => {
         photos: new Map([...photos].filter(([u]) => ids.has(u))),
       });
       const { key, content } = await seal(packed);
-      status(`Uploading ${(content.length / 1e6).toFixed(1)} MB to a secret gist…`);
-      const ref = await uploadGist(token, content);
-      if (typed) await chrome.storage.local.set({ [TOKEN_KEY]: typed });
-      lastUpload = { shown, ref, key };
+      status(`Uploading ${(content.length / 1e6).toFixed(1)} MB…`);
+      lastUpload = { shown, ref: await uploadShare(content), key };
     }
     const url = SHARE_BASE_URL + buildHash({ s: lastUpload.ref, k: lastUpload.key, ...viewState() });
     $('upload-link').value = url;
     $('upload-result').hidden = false;
-    $('token-row').hidden = true;
     $('upload-go').hidden = true;
     try {
       await navigator.clipboard.writeText(url);
@@ -714,12 +694,6 @@ $('upload-form').onsubmit = async (e) => {
     status('');
     $('upload-error').textContent = `Could not share: ${err.message}.`;
     $('upload-error').hidden = false;
-    if (err.badToken) {
-      await chrome.storage.local.remove(TOKEN_KEY);
-      $('token-row').hidden = false;
-      $('gh-token').required = true;
-      $('forget-token').hidden = true;
-    }
   } finally {
     $('upload-go').disabled = false;
   }

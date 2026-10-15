@@ -1,19 +1,18 @@
 // Full shares: the graph plus real names and photos, too big for a link (~3 MB for 460
-// people), so they go to a secret GitHub gist instead. Everything is encrypted in the
+// people), so they are stored in a small database instead. Everything is encrypted in the
 // browser first and the key travels only after the "#" of the link, which browsers never
-// send anywhere: GitHub stores bytes it cannot read. A secret gist is unlisted, not
-// private, so the encryption is what keeps it to people who have the link.
+// send anywhere: the database holds bytes it cannot read, and the link is what gives
+// access.
 //
-// The link:  #s=<github user>/<gist id>&k=<key>  (plus the usual p, c, v, n, m)
+// The link:  #s=<share id>&k=<key>  (plus the usual p, c, v, n, m)
 //
-// Gist file content: base64 of  iv (12 bytes) + AES-GCM-256 ciphertext  of
+// Stored content: base64 of  iv (12 bytes) + AES-GCM-256 ciphertext  of
 //   "IGS1"  u32 header length  header (deflate-raw JSON)  photo bytes, one after another
 //   header: { g: <graph as in a #g= link>, profiles: { user: [name, flags] },
 //             photos: [[user, byte length, mime], ...] }   flags: 1 private | 2 verified
 // Photos stay binary (base64 inside JSON, then base64 again, would add 77%).
 
 const MAGIC = [73, 71, 83, 49]; // "IGS1"
-const FILE = 'graph.igsg';
 
 async function pipe(bytes, stream) {
   return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
@@ -80,7 +79,7 @@ export async function unpackShare(bytes) {
   return { g: header.g, profiles, photos };
 }
 
-// -> { key: base64url, content: base64 text for the gist }
+// -> { key: base64url, content: base64 text to store }
 export async function seal(bytes) {
   const raw = crypto.getRandomValues(new Uint8Array(32));
   const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt']);
@@ -107,37 +106,51 @@ export async function unseal(content, keyText) {
   }
 }
 
-// -> "user/gistId"
-export async function uploadGist(token, content, { fetchImpl = fetch } = {}) {
-  const res = await fetchImpl('https://api.github.com/gists', {
+// ---- storage: a Neon Postgres database (db/shares.sql) ------------------------------
+// Browsers talk to it over Neon's HTTP SQL endpoint as share_client. That password is
+// public on purpose: the role can only call create_share and get_share, which save one
+// share or read one by its random id, within size and rate caps. It cannot list, change
+// or delete anything.
+const SHARES_HOST = 'ep-empty-sun-b68xcfin-pooler.c-2.sa-east-1.aws.neon.tech';
+const SHARES_DB = `postgresql://share_client:a6ecb5e19602ba40f6e83f7696a701f80f5de12015404400@${SHARES_HOST}/neondb?sslmode=require`;
+
+async function sharesQuery(query, params, fetchImpl) {
+  const res = await fetchImpl(`https://${SHARES_HOST}/sql`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json',
+      'Neon-Connection-String': SHARES_DB,
+      'Neon-Array-Mode': 'true',
+      // text/plain: Neon's CORS answer does not list Content-Type, and a JSON body sent as
+      // text/plain is read the same
+      'Content-Type': 'text/plain;charset=UTF-8',
     },
-    body: JSON.stringify({
-      description: 'IG Social Graph share (encrypted; the key is only in the link)',
-      public: false,
-      files: { [FILE]: { content } },
-    }),
+    body: JSON.stringify({ query, params }),
   });
   const json = await res.json().catch(() => ({}));
-  if (res.status === 401) throw Object.assign(new Error('GitHub did not accept the token'), { badToken: true });
-  if (res.status === 403 || res.status === 404) {
-    throw Object.assign(new Error('the token is not allowed to create gists (it needs "Gists: read and write")'), {
-      badToken: true,
-    });
-  }
-  if (!res.ok || !json.id) throw new Error(`GitHub answered ${res.status} ${json.message || ''}`.trim());
-  return `${json.owner?.login}/${json.id}`;
+  if (!res.ok) throw new Error(json.message || `the share storage answered ${res.status}`);
+  return json.rows;
 }
 
-// The raw file, not the API: no rate limit for whoever opens the link, and the API cuts
-// files over 1 MB short anyway. Both answer browsers on any site.
-export async function downloadGist(ref, { fetchImpl = fetch } = {}) {
-  if (!/^[A-Za-z0-9-]+\/[0-9a-f]+$/.test(ref || '')) throw new Error('the link points at no gist');
-  const res = await fetchImpl(`https://gist.githubusercontent.com/${ref}/raw/${FILE}`);
+// content: base64 from seal() -> the share's id (32 hex characters)
+export async function uploadShare(content, { fetchImpl = fetch } = {}) {
+  const [[id]] = await sharesQuery('select create_share($1)', [content], fetchImpl);
+  return id;
+}
+
+// ref: a share id, or "user/gistId" for links made while shares went to GitHub gists
+export async function downloadShare(ref, { fetchImpl = fetch } = {}) {
+  if (/^[0-9a-f]{32}$/.test(ref || '')) {
+    const [[content]] = await sharesQuery('select get_share($1)', [ref], fetchImpl);
+    if (!content) throw new Error('the shared graph was deleted, or the link is cut off');
+    return content;
+  }
+  if (/^[A-Za-z0-9-]+\/[0-9a-f]+$/.test(ref || '')) return downloadGist(ref, fetchImpl);
+  throw new Error('the link points at no shared graph');
+}
+
+// The raw file, not the API: no rate limit, and the API cuts files over 1 MB short.
+async function downloadGist(ref, fetchImpl) {
+  const res = await fetchImpl(`https://gist.githubusercontent.com/${ref}/raw/graph.igsg`);
   if (res.status === 404) throw new Error('the shared graph was deleted');
   if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
   return res.text();
