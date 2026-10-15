@@ -181,6 +181,7 @@ export function drawGraph(
     ctx.beginPath();
     ctx.arc(n.x, n.y, inner, 0, 2 * Math.PI);
     ctx.clip();
+    ctx.imageSmoothingQuality = 'high'; // 150 px photos drawn at ~30 px
     ctx.drawImage(img, n.x - inner, n.y - inner, 2 * inner, 2 * inner);
     ctx.restore();
   }

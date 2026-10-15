@@ -166,10 +166,11 @@ function readUsernameFromPage(pk) {
 
 // ---- Profile photos ---------------------------------------------------------------
 // Instagram's photo URLs are signed and expire within days, so the viewer gets a copy:
-// 64 px JPEG data URLs (~2.5 KB each) in their own storage key, away from the crawl state
-// that is rewritten after every request. They come from Instagram's CDN, not its API, so
+// the 150 px photo the lists link to, as a data URL (~6 KB each), in its own storage key,
+// away from the crawl state that is rewritten after every request. (Copies were 64 px at
+// first; those are fetched again at full size, keeping the small one if that fails.) They come from Instagram's CDN, not its API, so
 // they do not count against the crawl's pacing; a few at a time is still polite.
-const THUMB_PX = 64;
+const THUMB_PX = 150;
 const THUMB_CONCURRENCY = 3;
 let thumbing = false;
 let thumbs = null; // kept in memory: the crawl loop asks for missing photos after every step
@@ -177,14 +178,20 @@ let thumbs = null; // kept in memory: the crawl loop asks for missing photos aft
 async function makeThumb(src) {
   const res = await fetch(src, { credentials: 'omit' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const bitmap = await createImageBitmap(await res.blob());
+  const blob = await res.blob();
+  const bitmap = await createImageBitmap(blob);
+  // already small and square (the lists' usual 150 px): kept as Instagram made it
+  if (bitmap.width === bitmap.height && bitmap.width <= THUMB_PX * 1.1 && /jpeg|webp/.test(blob.type)) {
+    bitmap.close();
+    return toDataUrl(blob);
+  }
   const canvas = new OffscreenCanvas(THUMB_PX, THUMB_PX);
   const ctx = canvas.getContext('2d');
   // centre square crop (photos are square already, but not guaranteed)
   const side = Math.min(bitmap.width, bitmap.height);
   ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, THUMB_PX, THUMB_PX);
   bitmap.close();
-  return toDataUrl(await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 }));
+  return toDataUrl(await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.88 }));
 }
 
 async function toDataUrl(blob) {
@@ -215,26 +222,28 @@ async function largePhoto(username) {
   throw new Error('no larger photo available');
 }
 
-// Downloads the photos still missing. A URL that failed once is not retried until a
-// profile refresh brings a new one.
+// Downloads the photos still missing or smaller than THUMB_PX. A URL that failed once is
+// not retried until a profile refresh brings a new one.
 async function downloadThumbs() {
   await load();
   if (thumbing || !state?.profiles) return;
   thumbing = true;
   try {
     thumbs ??= (await chrome.storage.local.get(THUMBS_KEY))[THUMBS_KEY] || {};
-    const todo = Object.entries(state.profiles).filter(
-      ([username, p]) => p.pic && !thumbs[username]?.data && thumbs[username]?.src !== p.pic
-    );
+    const todo = Object.entries(state.profiles).filter(([username, p]) => {
+      const t = thumbs[username];
+      return p.pic && t?.failed !== p.pic && (!t?.data || (t.px || 64) < THUMB_PX);
+    });
     let sinceSave = 0;
     const worker = async () => {
       for (let item; (item = todo.shift()); ) {
         const [username, { pic }] = item;
-        let data = null;
         try {
-          data = await makeThumb(pic);
-        } catch (_) {}
-        thumbs[username] = { src: pic, data };
+          thumbs[username] = { src: pic, data: await makeThumb(pic), px: THUMB_PX };
+        } catch (_) {
+          // keep a smaller copy if there is one; remember the URL that failed
+          thumbs[username] = { ...thumbs[username], src: pic, failed: pic };
+        }
         if (++sinceSave >= 25) {
           sinceSave = 0;
           await chrome.storage.local.set({ [THUMBS_KEY]: thumbs });
