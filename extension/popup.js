@@ -1,5 +1,6 @@
 import { toGraph } from './lib/crawler.js';
 import { SHARE_BASE_URL, buildHash, encodeGraph } from './lib/share.js';
+import { createShare, photosFromThumbs } from './lib/vault.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -101,14 +102,34 @@ $('reset').onclick = () => {
   if (confirm('Delete everything collected so far?')) act(() => send('reset'));
 };
 $('view').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
-// Same link the viewer's button makes (loners included; the viewer hides them), on the public page.
+// Same kind of link the viewer's button makes: names and photos included, encrypted and
+// stored, opening on the public page (loners included; the viewer hides them).
 $('share').onclick = async () => {
-  const { crawl } = await chrome.storage.local.get('crawl');
-  const url = SHARE_BASE_URL + buildHash({ g: await encodeGraph(toGraph(crawl)) });
   const label = $('share').textContent;
+  let url;
+  try {
+    $('share').disabled = true;
+    $('share').textContent = 'Uploading…';
+    const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
+    const graph = toGraph(crawl);
+    const ref = await createShare({
+      g: await encodeGraph(graph),
+      ids: new Set(graph.nodes.map((n) => n.id)),
+      profiles: crawl.profiles,
+      photos: photosFromThumbs(thumbs),
+    });
+    url = SHARE_BASE_URL + buildHash(ref);
+  } catch (err) {
+    $('error').hidden = false;
+    $('error').textContent = `Could not share: ${err.message}.`;
+    $('share').textContent = label;
+    return;
+  } finally {
+    $('share').disabled = false;
+  }
   try {
     await navigator.clipboard.writeText(url);
-    $('share').textContent = `Copied · ${Math.round(url.length / 1000)}k characters`;
+    $('share').textContent = 'Link copied';
   } catch (_) {
     prompt('Copy this link:', url);
   }

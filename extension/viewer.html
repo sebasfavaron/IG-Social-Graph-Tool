@@ -338,8 +338,7 @@
       }
 
       /* ---- combine dialog ---- */
-      #combine-dialog,
-      #upload-dialog {
+      #combine-dialog {
         width: min(440px, calc(100vw - 32px));
         box-sizing: border-box;
         padding: 16px;
@@ -347,37 +346,16 @@
         background: var(--surface-solid);
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
       }
-      #combine-dialog::backdrop,
-      #upload-dialog::backdrop {
+      #combine-dialog::backdrop {
         background: rgba(0, 0, 0, 0.35);
       }
-      #upload-dialog h2,
       #combine-dialog h2 {
         margin: 0 0 6px;
         font-size: 15px;
       }
-      #upload-dialog p,
       #combine-dialog p {
         margin: 0 0 10px;
       }
-      #upload-dialog label {
-        display: block;
-        font-weight: 600;
-        margin-bottom: 4px;
-      }
-      #upload-dialog .small {
-        font-size: 12px;
-        margin-top: 6px;
-      }
-      #upload-result[hidden] {
-        display: none;
-      }
-      #upload-result {
-        display: flex;
-        gap: 6px;
-        margin-bottom: 10px;
-      }
-      #upload-link,
       #combine-link {
         width: 100%;
         box-sizing: border-box;
@@ -394,13 +372,6 @@
       }
       .error[hidden] {
         display: none;
-      }
-      .actions .link {
-        margin-right: auto;
-        border: 0;
-        background: none;
-        color: var(--muted);
-        text-decoration: underline;
       }
       .actions {
         display: flex;
@@ -733,11 +704,8 @@
         />
         <ul id="results" role="listbox" aria-label="Matching people" hidden></ul>
       </div>
-      <button id="share" hidden title="Anyone with the link can see these usernames and who follows whom">
+      <button id="share" hidden title="Uploads the graph with names and photos, encrypted, and copies a short link. Anyone with the link sees them.">
         <span class="wide-only">Copy share link</span><span class="narrow-only">Share</span>
-      </button>
-      <button id="share-full" hidden title="Upload the graph with real names and photos, encrypted, and copy a short link">
-        Share with photos…
       </button>
       <button id="combine" hidden title="Paste a friend's share link to see both of your circles in one graph">
         <span class="wide-only">Combine with a friend…</span><span class="narrow-only">Combine</span>
@@ -787,27 +755,6 @@
     <dialog id="photo-dialog" aria-labelledby="photo-caption">
       <img id="photo-big" alt="" />
       <p id="photo-caption"></p>
-    </dialog>
-
-    <dialog id="upload-dialog" class="panel-box form-dialog" aria-labelledby="upload-title">
-      <form id="upload-form">
-        <h2 id="upload-title">Share with names and photos</h2>
-        <p class="muted">
-          The graph, real names and photos are encrypted in this browser, then stored online. The key is only
-          in the link, so the storage cannot read them. Anyone you give the link to can.
-        </p>
-        <div id="upload-result" hidden>
-          <label for="upload-link" class="sr-only">Share link</label>
-          <input id="upload-link" type="text" readonly />
-          <button type="button" id="upload-copy">Copy</button>
-        </div>
-        <p id="upload-status" class="muted" role="status"></p>
-        <p id="upload-error" class="error" role="alert" hidden></p>
-        <div class="actions">
-          <button type="button" id="upload-cancel">Close</button>
-          <button type="submit" id="upload-go" class="primary">Upload and copy link</button>
-        </div>
-      </form>
     </dialog>
 
     <dialog id="combine-dialog" class="panel-box" aria-labelledby="combine-title">

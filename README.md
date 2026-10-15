@@ -10,7 +10,7 @@ Draws who-follows-whom among the people who follow you on Instagram, as an inter
 2. Log in to [instagram.com](https://www.instagram.com) in that browser.
 3. Click the extension icon → **Start**. It lists your followers, then asks Instagram, for each of them, which accounts you follow also follow them.
 4. Leave it running. The popup shows progress and the time left, measured from the pace so far (Instagram's pauses included); the icon badge shows the percentage. You can close the popup, pause and resume, or restart the browser: progress is saved.
-5. **View graph** opens the graph in a new tab. **Copy share link** copies a link anyone can open, no extension needed.
+5. **View graph** opens the graph in a new tab. **Copy share link** copies a short link anyone can open, no extension needed, with names and photos included.
 
 The crawl also keeps everyone's real name and profile photo, which come with the same lists at no extra request. A crawl made before that can get them with **Get names & photos** in the popup: your followers list again, about one request per 50 followers.
 
@@ -18,7 +18,7 @@ Requests go from an instagram.com tab with your own session, and the data stays 
 
 ### Reading the graph
 
-- **Friend groups** are found from who-follows-whom alone and coloured. You are left out of the grouping, since you connect to everyone. The key in the corner lists them: point at a group to highlight its people and the lines between them, click its name to rename it. Names are saved in the share link.
+- **Friend groups** are found from who-follows-whom alone and coloured. You are left out of the grouping, since you connect to everyone. The key in the corner lists them: point at a group to highlight its people and the lines between them, click its name to rename it. Names travel in the share link.
 - **Dot size** follows the number of connections, and dots shrink as you zoom out so they never pile up. Names never overlap: the most connected people are labelled first.
 - **Photos** take the place of the dots once you zoom in far enough to tell faces apart; the friend-group colour stays as a ring.
 - **Search** finds people by username or real name, accents ignored ("jose" finds José).
@@ -31,15 +31,15 @@ Requests go from an instagram.com tab with your own session, and the data stays 
 
 **Keyboard and screen readers:** every control is a real button or field with a visible focus ring; each selection is announced ("Selected @x. 10 follow @x…"); "reduce motion" skips the pan animation.
 
-### Share with names and photos
+### Share links
 
-A share link carries usernames only. **Share with photos…** shares everything you see: the graph, real names and photos, ~3 MB for 460 people. That is too big for a link, so the viewer:
+**Copy share link** shares everything you see: the graph, real names and photos (~3 MB for 460 people), plus who is selected, the zoom and your friend-group names. That is too big for a link, so:
 
-1. encrypts it in your browser with a new random key;
-2. stores the encrypted bytes in a small database ([Neon](https://neon.com) Postgres);
-3. copies a short link (~110 characters) with the share's id and the key after the `#`.
+1. it is encrypted in your browser with a new random key;
+2. the encrypted bytes are stored in a small database ([Neon](https://neon.com) Postgres);
+3. the link (~110 characters) carries the share's id and, after the `#`, the key.
 
-The database holds bytes it cannot read, and the key never reaches any server: the link is what gives access, so treat it like the data itself. Sharing the same graph again reuses its upload. Nobody needs an account or a token, and opening the link needs no extension. **Combine with a friend…** accepts these links too, and brings their names and photos along.
+Browsers never send what comes after the `#` to a server, so the database holds bytes it cannot read. The link is what gives access: anyone who gets it sees those people, their names and photos, and who follows whom. Sharing the same graph again reuses its upload. Nobody needs an account, and opening the link needs no extension. On the site the address bar holds the current link once shared, so copying it from there works too.
 
 The browser connects with a password that is in the code, so anyone can use it, and it can do exactly two things ([`db/shares.sql`](./db/shares.sql)): save one share and get its random id back, or read one share by id. It cannot list, change or delete shares. Uploads stop at 8 MB each, 60 an hour and 400 MB in total, which keeps strangers from filling the free tier.
 
@@ -47,9 +47,9 @@ The browser connects with a password that is in the code, so anyone can use it, 
 
 **Combine with a friend…** takes a share link a friend made and draws both graphs as one. The key switches from friend groups to circles: the people you both know, the ones only you know, the ones only they know. Point at a circle to highlight its people. The combined graph has its own share link, and **@you only** goes back.
 
-### Share links
+### Older links
 
-A share link carries the graph inside itself, after the `#`, which browsers never send to a server, so nothing is stored anywhere: ~10 000 characters for 462 people and 10 000 connections. The format is built for these graphs: each pair of people is stored once with its direction, your own links are two bits per person, and people are numbered friend group by friend group so the people someone is connected to get nearby numbers. It also keeps who is selected, which group is kept on, the zoom and your friend-group names. On the site the address bar always holds the current link, so copying it from there works too. Anyone who gets the link sees those usernames and who follows whom. Real names and photos stay in the extension: links carry usernames only (see the next section to share those).
+Links made before shares were stored carry the whole graph after `#g=` (~10 000 characters, usernames only), in a format built for these graphs: each pair of people is stored once with its direction, your own links are two bits per person, and people are numbered friend group by friend group so neighbours get nearby numbers. They still open, as do links to GitHub gists from a short while when shares went there.
 
 The site is the extension's viewer, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it.
 

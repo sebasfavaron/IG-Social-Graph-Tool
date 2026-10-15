@@ -4,7 +4,7 @@ import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
 import { friendGroups } from './lib/groups.js';
 import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
-import { downloadShare, packShare, seal, unpackShare, unseal, uploadShare } from './lib/vault.js';
+import { createShare, downloadShare, photosFromThumbs, unpackShare, unseal } from './lib/vault.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { CIRCLE, circles, mergeGraphs } from './lib/merge.js';
 
@@ -88,7 +88,6 @@ async function show(graph, { encodedGraph = null, fullShare = null } = {}) {
   );
   $('share').hidden = !shown;
   $('combine').hidden = !shown || !username || !!partner;
-  $('share-full').hidden = !shown || (!photos.size && !Object.keys(profiles).length);
   $('uncombine').hidden = !beforeMerge;
   if (beforeMerge) $('uncombine').querySelector('.label').textContent = `@${beforeMerge.username} only`;
   pinned = null;
@@ -639,66 +638,6 @@ async function openFullShare(ref, key) {
   return unpackShare(await unseal(await downloadShare(ref), key));
 }
 
-const uploadDialog = $('upload-dialog');
-let lastUpload = null; // { shown, ref, key }: sharing the same graph again reuses its upload
-
-$('share-full').onclick = () => {
-  $('upload-error').hidden = true;
-  $('upload-result').hidden = true;
-  $('upload-status').textContent = '';
-  $('upload-go').disabled = false;
-  $('upload-go').hidden = false;
-  uploadDialog.showModal();
-};
-$('upload-cancel').onclick = () => uploadDialog.close();
-$('upload-copy').onclick = async () => {
-  $('upload-link').select();
-  try {
-    await navigator.clipboard.writeText($('upload-link').value);
-    $('upload-status').textContent = 'Copied.';
-  } catch (_) {
-    document.execCommand('copy');
-  }
-};
-$('upload-form').onsubmit = async (e) => {
-  e.preventDefault();
-  if (!shown) return;
-  const status = (text) => ($('upload-status').textContent = text);
-  $('upload-error').hidden = true;
-  $('upload-go').disabled = true;
-  try {
-    if (lastUpload?.shown !== shown) {
-      status('Encrypting…');
-      const ids = new Set(shown.nodes.map((n) => n.id));
-      const packed = await packShare({
-        g: encoded || (await encodeGraph(shown)),
-        profiles: Object.fromEntries(Object.entries(profiles).filter(([u]) => ids.has(u))),
-        photos: new Map([...photos].filter(([u]) => ids.has(u))),
-      });
-      const { key, content } = await seal(packed);
-      status(`Uploading ${(content.length / 1e6).toFixed(1)} MB…`);
-      lastUpload = { shown, ref: await uploadShare(content), key };
-    }
-    const url = SHARE_BASE_URL + buildHash({ s: lastUpload.ref, k: lastUpload.key, ...viewState() });
-    $('upload-link').value = url;
-    $('upload-result').hidden = false;
-    $('upload-go').hidden = true;
-    try {
-      await navigator.clipboard.writeText(url);
-      status(`Link copied · ${url.length} characters.`);
-    } catch (_) {
-      status('Uploaded. Copy the link below.');
-    }
-    $('upload-link').select();
-  } catch (err) {
-    status('');
-    $('upload-error').textContent = `Could not share: ${err.message}.`;
-    $('upload-error').hidden = false;
-  } finally {
-    $('upload-go').disabled = false;
-  }
-};
-
 // ---- combine: a friend's share link drawn together with this graph -----------------
 const dialog = $('combine-dialog');
 $('combine').onclick = () => {
@@ -793,18 +732,48 @@ async function openShareHash() {
 }
 window.addEventListener('hashchange', openShareHash); // someone pasted or edited a link
 
+// Share: the graph with names and photos, encrypted and stored (vault.js); the link
+// carries its id and key, plus how it is being looked at. Sharing the same graph again,
+// or one that came from a share link, reuses that upload.
+const shareLabel = $('share').innerHTML; // read once: a click mid-"Link copied" would keep that
+let shareFlash = null;
 $('share').onclick = async () => {
   if (!shown) return;
-  const base = inExtension ? SHARE_BASE_URL : location.origin + location.pathname;
-  const url = base + currentHash(encoded || (await encodeGraph(shown)));
-  const label = $('share').textContent;
+  const button = $('share');
+  const label = shareLabel;
+  clearTimeout(shareFlash);
+  const flash = (text) => {
+    button.textContent = text;
+    shareFlash = setTimeout(() => (button.innerHTML = label), 2500);
+  };
+  try {
+    if (!shareRef) {
+      button.disabled = true;
+      button.textContent = 'Uploading…';
+      shareRef = await createShare({
+        g: encoded || (await encodeGraph(shown)),
+        ids: new Set(shown.nodes.map((n) => n.id)),
+        profiles,
+        photos,
+      });
+      syncUrl(); // on the site the address bar becomes the short link too
+    }
+  } catch (err) {
+    button.innerHTML = label;
+    alert(`Could not share: ${err.message}.`);
+    return;
+  } finally {
+    button.disabled = false;
+  }
+  const url = SHARE_BASE_URL + buildHash({ ...shareRef, ...viewState() });
   try {
     await navigator.clipboard.writeText(url);
-    $('share').textContent = `Copied · ${Math.round(url.length / 1000)}k characters`;
+    flash('Link copied');
   } catch (_) {
+    // the upload took long enough for the browser to stop treating this as a click
+    button.innerHTML = label;
     prompt('Copy this link:', url);
   }
-  setTimeout(() => ($('share').textContent = label), 2500);
 };
 
 
@@ -938,16 +907,14 @@ if (!inExtension) {
     ' to see a graph here.'
   );
 }
-const toPhotos = (thumbs = {}) =>
-  new Map(Object.entries(thumbs).flatMap(([username, t]) => (t?.data ? [[username, t.data]] : [])));
 if (inExtension) {
   const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
   profiles = ownProfiles = crawl?.profiles || {};
-  photos = ownPhotos = toPhotos(thumbs);
+  photos = ownPhotos = photosFromThumbs(thumbs);
   // photos keep arriving while the crawl runs
   chrome.storage.onChanged.addListener((changes) => {
     if (!changes.thumbs) return;
-    const fresh = toPhotos(changes.thumbs.newValue);
+    const fresh = photosFromThumbs(changes.thumbs.newValue);
     if (photos === ownPhotos) photos = fresh;
     ownPhotos = fresh;
     if (photos !== fresh) return; // looking at someone else's full share

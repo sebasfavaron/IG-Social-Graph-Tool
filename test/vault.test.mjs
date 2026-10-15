@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { downloadShare, packShare, seal, unpackShare, unseal, uploadShare } from '../extension/lib/vault.js';
+import { createShare, downloadShare, packShare, seal, unpackShare, unseal, uploadShare } from '../extension/lib/vault.js';
 import { buildHash, parseHash } from '../extension/lib/share.js';
 
 const jpeg = (fill, n) => `data:image/jpeg;base64,${Buffer.alloc(n, fill).toString('base64')}`;
@@ -68,6 +68,15 @@ test('a share is stored through create_share and read back through get_share', a
   assert.equal(back.profiles.ana.name, 'Ana Belén');
   await assert.rejects(downloadShare('cd'.repeat(16), neon), /deleted/);
   await assert.rejects(downloadShare('../evil', neon), /no shared graph/);
+});
+
+test('a share carries only the people in its graph', async () => {
+  const neon = fakeNeon();
+  const ref = await createShare({ ...share, ids: new Set(['ana']) }, neon);
+  assert.deepEqual(Object.keys(ref), ['s', 'k']);
+  const back = await unpackShare(await unseal(await downloadShare(ref.s, neon), ref.k));
+  assert.deepEqual(Object.keys(back.profiles), ['ana']);
+  assert.deepEqual([...back.photos.keys()], ['ana']);
 });
 
 test("the database's refusals come through as messages", async () => {

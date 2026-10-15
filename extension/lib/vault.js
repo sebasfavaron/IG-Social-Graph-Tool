@@ -137,6 +137,23 @@ export async function uploadShare(content, { fetchImpl = fetch } = {}) {
   return id;
 }
 
+// The whole share step: keeps only the people in the graph, packs, encrypts, stores.
+// ids: Set of usernames in the graph (profiles and photos of anyone else stay behind).
+// -> { s: share id, k: key }, ready for buildHash
+export async function createShare({ g, ids, profiles = {}, photos = new Map() }, options) {
+  const packed = await packShare({
+    g,
+    profiles: Object.fromEntries(Object.entries(profiles).filter(([u]) => ids.has(u))),
+    photos: new Map([...photos].filter(([u]) => ids.has(u))),
+  });
+  const { key, content } = await seal(packed);
+  return { s: await uploadShare(content, options), k: key };
+}
+
+// The extension's saved photos ({ username: { src, data } }) as username -> data URL.
+export const photosFromThumbs = (thumbs = {}) =>
+  new Map(Object.entries(thumbs).flatMap(([username, t]) => (t?.data ? [[username, t.data]] : [])));
+
 // ref: a share id, or "user/gistId" for links made while shares went to GitHub gists
 export async function downloadShare(ref, { fetchImpl = fetch } = {}) {
   if (/^[0-9a-f]{32}$/.test(ref || '')) {
