@@ -3,7 +3,9 @@ import { drawGraph } from './lib/graphCanvas.js';
 import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
 import { friendGroups } from './lib/groups.js';
-import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
+import { MAX_GROUP_NAME, SHARE_BASE_URL, SHARE_PREFIX, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
+import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
+import { CIRCLE, circles, mergeGraphs } from './lib/merge.js';
 
 const INSTALL_URL = 'https://github.com/sebasfavaron/IG-Social-Graph-Tool#use-it-chrome-extension';
 
@@ -16,6 +18,13 @@ const inExtension = typeof chrome !== 'undefined' && !!chrome.storage?.local;
 let shown = null; // what is on screen, for the share link
 let encoded = null; // `shown` packed for the link; filled in the background
 let viewTouched = false; // the view goes in the link only once someone zoomed or panned
+let beforeMerge = null; // the graph shown before combining, to go back to
+// Names, photos and flags from the crawl (extension only: share links carry usernames).
+let profiles = {}; // username -> { name, pic, private, verified }
+let photos = new Map(); // username -> data URL
+const nameOf = (id) => profiles[id]?.name || '';
+// lower case without accents, so "jose" finds "José"
+const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
 const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -23,10 +32,11 @@ const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 // Resolves once the layout is in, so callers can select and move the view.
 async function show(graph, { encodedGraph = null } = {}) {
   const username = graph.username || graph.metadata?.loggedUsername;
+  const partner = graph.partner && graph.nodes.some((n) => n.id === graph.partner) ? graph.partner : null;
   const total = graph.nodes.length;
   const pruned = pruneLoneNodes(graph);
-  document.title = username ? `@${username}'s circle` : 'IG Social Graph';
-  $('title').textContent = username ? `@${username}` : 'IG Social Graph';
+  document.title = partner ? `@${username} + @${partner}` : username ? `@${username}'s circle` : 'IG Social Graph';
+  $('title').textContent = partner ? `@${username} + @${partner}` : username ? `@${username}` : 'IG Social Graph';
   const loners = total - pruned.nodes.length;
   const extra = document.createElement('span');
   extra.className = 'wide-only';
@@ -46,20 +56,24 @@ async function show(graph, { encodedGraph = null } = {}) {
   full.links.sort((a, b) => byId(a.source, b.source) || byId(a.target, b.target));
   const kept = new Set(pruned.nodes.map((n) => n.id));
   const hidden = new Set(full.nodes.map((n) => n.id).filter((id) => !kept.has(id)));
-  groups = friendGroups(full, { exclude: username, hidden });
+  groups = partner ? circleKey(full, username, partner, hidden) : friendGroups(full, { exclude: username, hidden });
+  if (partner) extra.after(` · ${groups.sizes[0]} in both circles`);
   graphControl?.destroy();
   graphControl = pruned.nodes.length
     ? drawGraph($('graph'), full, {
         hidden,
         groupOf: groups.groupOf,
+        photos,
         theme: themeFromCss(),
         insets: panelInsets,
         onViewChange,
         onSelectionChange,
       })
     : null;
-  shown = graphControl ? { ...full, username } : null;
-  groupNames = loadGroupNames();
+  shown = graphControl ? { ...full, username, partner } : null;
+  if (!partner) beforeMerge = null;
+  groupAnchorIds = partner ? [] : groupAnchors(groups.groupOf, full.links, groups.sizes.length);
+  groupNames = partner ? [] : loadGroupNames();
   renderGroups();
   $('graph').setAttribute(
     'aria-label',
@@ -68,6 +82,9 @@ async function show(graph, { encodedGraph = null } = {}) {
       '. Use search to pick someone; their connections are listed in a panel.'
   );
   $('share').hidden = !shown;
+  $('combine').hidden = !shown || !username || !!partner;
+  $('uncombine').hidden = !beforeMerge;
+  if (beforeMerge) $('uncombine').querySelector('.label').textContent = `@${beforeMerge.username} only`;
   pinned = null;
   viewTouched = false;
   encoded = encodedGraph;
@@ -102,7 +119,8 @@ function currentHash(g) {
     p: graphControl?.selected(),
     c: pinned,
     v: viewTouched && graphControl ? graphControl.view() : null,
-    n: groupNames,
+    n: shown?.partner ? null : groupNames,
+    m: shown?.partner,
   });
 }
 let syncTimer = null;
@@ -124,6 +142,7 @@ let pinned = null; // the group kept on (follower | following | mutual), also in
 const sections = [...document.querySelectorAll('#panel section')];
 const expanded = new Set(); // groups showing all their names, reset per selection
 const LIST_LIMIT = 30;
+const FILTER_FROM = 15; // people in the panel before it offers a filter box
 // Headings name the selected person and put the count where a sentence would, so the
 // direction of each group reads naturally: "9 follow @x", "@x follows 5".
 const LABELS = {
@@ -146,9 +165,28 @@ function personButton(id) {
   const li = document.createElement('li');
   const b = document.createElement('button');
   b.textContent = `@${id}`;
+  if (nameOf(id)) b.title = nameOf(id);
   b.onclick = () => choosePerson(id);
   li.append(b);
   return li;
+}
+
+// the panel's top: photo (or initial), username, real name and flags
+function paintWho(selected) {
+  $('panel-name').textContent = `@${selected}`;
+  const profile = profiles[selected];
+  $('panel-meta').textContent = [profile?.name, profile?.private && 'private', profile?.verified && 'verified']
+    .filter(Boolean)
+    .join(' · ');
+  $('panel-meta').hidden = !$('panel-meta').textContent;
+  if (photos.has(selected)) {
+    const img = new Image();
+    img.src = photos.get(selected);
+    img.alt = '';
+    $('avatar').replaceChildren(img);
+  } else {
+    $('avatar').textContent = (selected.match(/[a-z0-9]/i)?.[0] || '@').toUpperCase();
+  }
 }
 
 function updatePanel() {
@@ -158,13 +196,17 @@ function updatePanel() {
   if (selected !== lastSelected) {
     expanded.clear();
     sheetTab = null;
+    $('panel-filter').value = '';
   }
+  const query = fold($('panel-filter').value.trim());
+  const matches = (id) => !query || fold(id).includes(query) || fold(nameOf(id)).includes(query);
   $('panel').hidden = !people;
   document.body.classList.toggle('selected', !!people);
   $('hint').hidden = !!people;
   if (people) {
-    $('panel-name').textContent = `@${selected}`;
-    $('avatar').textContent = (selected.match(/[a-z0-9]/i)?.[0] || '@').toUpperCase();
+    if (selected !== lastSelected) paintWho(selected);
+    const everyone = people.follower.length + people.following.length + people.mutual.length;
+    $('panel-filter').hidden = everyone < FILTER_FROM;
     $('profile').href = `https://www.instagram.com/${encodeURIComponent(selected)}/`;
     $('profile').setAttribute('aria-label', `Open @${selected} on Instagram (new tab)`);
     for (const section of sections) {
@@ -175,11 +217,20 @@ function updatePanel() {
       toggle.title = pinned === cat ? 'Show all groups again' : 'Show only this group (hover to preview)';
       toggle.setAttribute('aria-pressed', String(pinned === cat));
       toggle.disabled = ids.length === 0;
-      if (selected !== lastSelected || section.dataset.rendered !== String(expanded.has(cat))) {
+      const renderKey = `${expanded.has(cat)}|${query}`;
+      if (selected !== lastSelected || section.dataset.rendered !== renderKey) {
         const list = section.querySelector('ul');
-        const shownIds = expanded.has(cat) ? ids : ids.slice(0, LIST_LIMIT);
+        // a filter shows every match; without one, the first LIST_LIMIT and "Show all"
+        const found = ids.filter(matches);
+        const shownIds = expanded.has(cat) || query ? found : ids.slice(0, LIST_LIMIT);
         list.replaceChildren(...shownIds.map(personButton));
-        if (ids.length > shownIds.length) {
+        if (query && ids.length && !found.length) {
+          const li = document.createElement('li');
+          li.className = 'none';
+          li.textContent = 'No match';
+          list.append(li);
+        }
+        if (!query && ids.length > shownIds.length) {
           const li = document.createElement('li');
           const more = document.createElement('button');
           more.className = 'more';
@@ -192,7 +243,7 @@ function updatePanel() {
           li.append(more);
           list.append(li);
         }
-        section.dataset.rendered = String(expanded.has(cat));
+        section.dataset.rendered = renderKey;
       }
     }
     // tabs (phones): default to the first group with anyone in it
@@ -244,6 +295,14 @@ for (const tab of document.querySelectorAll('[data-tab]')) {
     updatePanel();
   };
 }
+$('panel-filter').oninput = () => updatePanel();
+$('panel-filter').onkeydown = (e) => {
+  if (e.key === 'Escape' && $('panel-filter').value) {
+    e.stopPropagation(); // clear the filter first, the selection on the next Esc
+    $('panel-filter').value = '';
+    updatePanel();
+  }
+};
 $('sheet-handle').onclick = () => {
   const folded = document.body.classList.toggle('sheet-folded');
   $('sheet-handle').setAttribute('aria-expanded', String(!folded));
@@ -283,31 +342,90 @@ function panelInsets() {
 
 // ---- friend groups key: renameable, names saved in the link ------------------------
 let groups = { groupOf: new Map(), sizes: [] };
-let groupNames = [];
-const namesKey = () => `groupNames:${shown?.username || ''}`;
+let groupNames = []; // per group index, as shown and as put in the link
+let groupAnchorIds = []; // each group's most connected person, see groupNames.js
+// Saved per account as { anchor username: name }, so a later crawl that renumbers the
+// groups keeps each name on its group. Before that they were saved by number.
+const namesKey = () => `groupNamesByAnchor:${shown?.username || ''}`;
+const oldNamesKey = () => `groupNames:${shown?.username || ''}`;
 
-function loadGroupNames() {
+function readSavedNames() {
   try {
-    return JSON.parse(localStorage.getItem(namesKey()) || '[]');
+    const saved = localStorage.getItem(namesKey());
+    if (saved) return JSON.parse(saved);
+    const old = JSON.parse(localStorage.getItem(oldNamesKey()) || '[]');
+    const carried = fromPositional(old, groupAnchorIds);
+    if (old.length) {
+      localStorage.setItem(namesKey(), JSON.stringify(carried));
+      localStorage.removeItem(oldNamesKey());
+    }
+    return carried;
   } catch (_) {
-    return [];
+    return {};
   }
 }
-function saveGroupNames() {
+function loadGroupNames() {
+  return namesFor(readSavedNames(), groups.groupOf, groupAnchorIds);
+}
+function saveGroupName(i, name) {
+  groupNames[i] = name;
   try {
-    localStorage.setItem(namesKey(), JSON.stringify(groupNames));
+    localStorage.setItem(namesKey(), JSON.stringify(rename(readSavedNames(), groups.groupOf, groupAnchorIds, i, name)));
   } catch (_) {}
   syncUrl();
+}
+
+// Two people combined: the key shows circles instead of friend groups. groupOf holds
+// colour indices (--g5 both, --g2 first, --g4 second), which the key highlights by.
+const CIRCLE_COLOUR = { [CIRCLE.BOTH]: 4, [CIRCLE.FIRST]: 1, [CIRCLE.SECOND]: 3 };
+function circleKey(graph, first, second, hidden) {
+  const { circleOf } = circles({ links: graph.links, username: first, partner: second });
+  const groupOf = new Map();
+  const sizes = [0, 0, 0];
+  for (const [id, c] of circleOf) {
+    groupOf.set(id, CIRCLE_COLOUR[c]);
+    if (!hidden.has(id)) sizes[c]++;
+  }
+  const labels = ['In both circles', `Only @${first}'s`, `Only @${second}'s`];
+  return { groupOf, sizes, labels, colours: [CIRCLE.BOTH, CIRCLE.FIRST, CIRCLE.SECOND].map((c) => CIRCLE_COLOUR[c]) };
 }
 
 let groupsKeyShown = false;
 function renderGroups() {
   $('groups').hidden = groups.sizes.length < 2;
-  $('groups-count').textContent = `(${groups.sizes.length})`;
+  $('groups-count').textContent = groups.labels ? '' : `(${groups.sizes.length})`;
+  $('groups-title').firstChild.textContent = groups.labels ? 'Circles ' : 'Friend groups ';
   // open on desktop, folded on phones the first time; after that it stays as the user left it
   if (!groupsKeyShown && !$('groups').hidden) {
     $('groups').open = !narrow.matches;
     groupsKeyShown = true;
+  }
+  if (groups.labels) {
+    $('groups-list').replaceChildren(
+      ...groups.sizes.map((n, i) => {
+        const li = document.createElement('li');
+        li.style.setProperty('--c', `var(--g${groups.colours[i] + 1})`);
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        // a button, so the highlight is reachable from the keyboard too
+        const label = document.createElement('button');
+        label.className = 'circle';
+        label.textContent = shorten(groups.labels[i], 26);
+        label.title = 'Point at this to highlight its people';
+        const count = document.createElement('span');
+        count.className = 'n';
+        count.textContent = n;
+        li.append(dot, label, count);
+        const on = () => graphControl?.highlightGroup(groups.colours[i]);
+        const off = () => graphControl?.highlightGroup(null);
+        li.addEventListener('mouseenter', on);
+        li.addEventListener('mouseleave', off);
+        label.addEventListener('focus', on);
+        label.addEventListener('blur', off);
+        return li;
+      })
+    );
+    return;
   }
   $('groups-list').replaceChildren(
     ...groups.sizes.map((n, i) => {
@@ -321,10 +439,7 @@ function renderGroups() {
       input.maxLength = MAX_GROUP_NAME;
       input.setAttribute('aria-label', `Name for group ${i + 1} (${n} people)`);
       input.title = 'Click to name this group; the name is saved in the share link';
-      input.oninput = () => {
-        groupNames[i] = input.value.trim();
-        saveGroupNames();
-      };
+      input.oninput = () => saveGroupName(i, input.value.trim());
       // block body on purpose: a DOM0 handler returning false cancels the key, so a
       // one-liner `e.key === 'Enter' && …` swallowed every letter typed
       input.onkeydown = (e) => {
@@ -397,13 +512,55 @@ document.addEventListener('keydown', (e) => {
 
 $('example').onclick = () => show(EXAMPLE_GRAPH);
 
+// ---- combine: a friend's share link drawn together with this graph -----------------
+const dialog = $('combine-dialog');
+$('combine').onclick = () => {
+  $('combine-error').hidden = true;
+  $('combine-link').value = '';
+  dialog.showModal();
+};
+$('combine-cancel').onclick = () => dialog.close();
+$('combine-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const fail = (text) => {
+    $('combine-error').textContent = text;
+    $('combine-error').hidden = false;
+  };
+  const text = $('combine-link').value.trim();
+  const at = text.indexOf(SHARE_PREFIX);
+  const state = at >= 0 ? parseHash(text.slice(at)) : null;
+  if (!state?.g) return fail('That is not a share link: they contain "#g=" followed by the graph.');
+  if (state.m) return fail('That link already combines two people. Ask for one with only theirs.');
+  if (!shown) return;
+  $('combine-go').disabled = true;
+  try {
+    const friend = await decodeGraph(state.g);
+    const merged = mergeGraphs(shown, friend);
+    const original = shown;
+    dialog.close();
+    await show(merged);
+    beforeMerge = original;
+    $('uncombine').hidden = false;
+    $('uncombine').querySelector('.label').textContent = `@${original.username} only`;
+  } catch (err) {
+    fail(`Could not combine: ${err.message}.`);
+  } finally {
+    $('combine-go').disabled = false;
+  }
+};
+$('uncombine').onclick = () => beforeMerge && show(beforeMerge);
+
 // Share: the graph on screen and how it is being looked at travel inside the link (after
 // "#", never sent to a server). From the extension the link points at the public page.
 async function openShareHash() {
   const state = parseHash(location.hash);
   if (!state?.g) return false;
   try {
-    if (state.g !== encoded) await show(await decodeGraph(state.g), { encodedGraph: state.g });
+    if (state.g !== encoded) {
+      const graph = await decodeGraph(state.g);
+      if (state.m) graph.partner = state.m;
+      await show(graph, { encodedGraph: state.g });
+    }
   } catch (err) {
     alert(`This share link looks cut off or broken (${err.message}). Ask for it again.`);
     return false;
@@ -420,7 +577,7 @@ async function openShareHash() {
     graphControl.setView(state.v);
     viewTouched = true;
   }
-  if (state.n) {
+  if (state.n && !shown?.partner) {
     groupNames = state.n;
     renderGroups();
   }
@@ -464,11 +621,14 @@ function renderResults() {
       const li = document.createElement('li');
       li.setAttribute('role', 'option');
       li.setAttribute('aria-selected', String(i === active));
-      const q = search.value.trim().toLowerCase();
-      const at = id.toLowerCase().indexOf(q);
-      const mark = document.createElement('mark');
-      mark.textContent = id.slice(at, at + q.length);
-      li.append(id.slice(0, at), mark, id.slice(at + q.length));
+      const q = fold(search.value.trim());
+      li.append(...highlighted(id, q));
+      if (nameOf(id)) {
+        const name = document.createElement('span');
+        name.className = 'muted';
+        name.append(' ', ...highlighted(nameOf(id), q));
+        li.append(name);
+      }
       li.onmouseenter = () => setActive(i);
       // keep focus so blur does not close the list first
       li.onmousedown = (e) => e.preventDefault();
@@ -481,6 +641,17 @@ function renderResults() {
   results.hidden = matches.length === 0;
   search.setAttribute('aria-expanded', String(!results.hidden));
   preview();
+}
+
+// text with the part matching q in <mark>; folding keeps the length of precomposed text,
+// and anything else is shown unmarked
+function highlighted(text, q) {
+  const folded = fold(text);
+  const at = folded.length === text.length ? folded.indexOf(q) : -1;
+  if (at < 0 || !q) return [text];
+  const mark = document.createElement('mark');
+  mark.textContent = text.slice(at, at + q.length);
+  return [text.slice(0, at), mark, text.slice(at + q.length)];
 }
 
 function setActive(i) {
@@ -509,10 +680,17 @@ function choose(id) {
 }
 
 search.oninput = () => {
-  const q = search.value.trim().toLowerCase();
+  const q = fold(search.value.trim());
   if (!q || !graphControl) return closeSearch();
-  const ids = graphControl.ids().filter((id) => id.toLowerCase().includes(q));
-  ids.sort((a, b) => a.toLowerCase().indexOf(q) - b.toLowerCase().indexOf(q) || a.length - b.length);
+  // usernames first (earliest match first), then real names
+  const rank = (id) => {
+    const inId = fold(id).indexOf(q);
+    if (inId >= 0) return inId;
+    const inName = fold(nameOf(id)).indexOf(q);
+    return inName >= 0 ? 1000 + inName : -1;
+  };
+  const ids = graphControl.ids().filter((id) => rank(id) >= 0);
+  ids.sort((a, b) => rank(a) - rank(b) || a.length - b.length);
   matches = ids.slice(0, 8);
   active = 0;
   renderResults();
@@ -552,6 +730,21 @@ if (!inExtension) {
     link,
     ' to see a graph here.'
   );
+}
+const toPhotos = (thumbs = {}) =>
+  new Map(Object.entries(thumbs).flatMap(([username, t]) => (t?.data ? [[username, t.data]] : [])));
+if (inExtension) {
+  const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
+  profiles = crawl?.profiles || {};
+  photos = toPhotos(thumbs);
+  // photos keep arriving while the crawl runs
+  chrome.storage.onChanged.addListener((changes) => {
+    if (!changes.thumbs) return;
+    photos = toPhotos(changes.thumbs.newValue);
+    graphControl?.setPhotos(photos);
+    const selected = graphControl?.selected();
+    if (selected) paintWho(selected);
+  });
 }
 if (!(await openShareHash())) {
   const { crawl } = inExtension ? await chrome.storage.local.get('crawl') : {};

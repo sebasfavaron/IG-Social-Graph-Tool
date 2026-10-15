@@ -250,10 +250,86 @@
         color: #fff;
         background: linear-gradient(135deg, var(--follower), #cc79a7 55%, var(--following));
       }
+      .avatar img {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        object-fit: cover;
+      }
       .who h2 {
         margin: 0;
         font-size: 15px;
         word-break: break-all;
+      }
+      #panel-meta {
+        margin: 0;
+      }
+      #panel-meta[hidden],
+      #panel-filter[hidden] {
+        display: none;
+      }
+      #panel-filter {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 12px;
+        padding: 4px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--chip);
+        color: inherit;
+        font: inherit;
+      }
+
+      /* ---- combine dialog ---- */
+      #combine-dialog {
+        width: min(440px, calc(100vw - 32px));
+        box-sizing: border-box;
+        padding: 16px;
+        color: inherit;
+        background: var(--surface-solid);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+      }
+      #combine-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.35);
+      }
+      #combine-dialog h2 {
+        margin: 0 0 6px;
+        font-size: 15px;
+      }
+      #combine-dialog p {
+        margin: 0 0 10px;
+      }
+      #combine-link {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--chip);
+        color: inherit;
+        font: inherit;
+      }
+      .error {
+        color: #c62828;
+        margin-top: 8px !important;
+      }
+      .error[hidden] {
+        display: none;
+      }
+      .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--bg);
+      }
+      button.primary:disabled {
+        opacity: 0.6;
       }
       #panel-close {
         margin-left: auto;
@@ -380,6 +456,17 @@
       #groups input:focus {
         border-color: var(--line);
         background: var(--surface-solid);
+      }
+      #groups button.circle {
+        flex: 1;
+        min-width: 0;
+        padding: 1px 4px;
+        border: 0;
+        background: none;
+        text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       #groups .n {
         color: var(--muted);
@@ -564,6 +651,10 @@
       <button id="share" hidden title="Anyone with the link can see these usernames and who follows whom">
         <span class="wide-only">Copy share link</span><span class="narrow-only">Share</span>
       </button>
+      <button id="combine" hidden title="Paste a friend's share link to see both of your circles in one graph">
+        <span class="wide-only">Combine with a friend…</span><span class="narrow-only">Combine</span>
+      </button>
+      <button id="uncombine" hidden title="Go back to one person's graph"><span class="label"></span></button>
       <button id="theme" aria-label="Switch to dark theme" title="Switch theme">☾</button>
       <span id="hint" class="muted wide-only">Click someone to see who follows whom · Esc clears</span>
     </header>
@@ -574,10 +665,13 @@
         <div class="avatar" id="avatar" aria-hidden="true"></div>
         <div>
           <h2 id="panel-name"></h2>
+          <p id="panel-meta" class="muted" hidden></p>
           <a id="profile" target="_blank" rel="noopener">Open on Instagram ↗</a>
         </div>
         <button id="panel-close" aria-label="Clear selection (Esc)" title="Clear selection (Esc)">×</button>
       </div>
+      <label for="panel-filter" class="sr-only">Filter these people</label>
+      <input id="panel-filter" type="search" placeholder="Filter these people" autocomplete="off" spellcheck="false" hidden />
       <div class="tabs narrow-only" role="tablist" aria-label="Groups">
         <button role="tab" data-tab="mutual" style="--c: var(--mutual)"><span class="swatch"></span><span class="label"></span></button>
         <button role="tab" data-tab="follower" style="--c: var(--follower)"><span class="swatch"></span><span class="label"></span></button>
@@ -601,6 +695,23 @@
       <summary id="groups-title">Friend groups <span id="groups-count" class="muted"></span></summary>
       <ol id="groups-list"></ol>
     </details>
+
+    <dialog id="combine-dialog" class="panel-box" aria-labelledby="combine-title">
+      <form id="combine-form">
+        <h2 id="combine-title">Combine with a friend's graph</h2>
+        <p class="muted">
+          Paste a share link your friend made with this tool. Both circles are drawn together: the people
+          you both know, and the ones only one of you does.
+        </p>
+        <label for="combine-link" class="sr-only">Friend's share link</label>
+        <input id="combine-link" type="text" inputmode="url" placeholder="https://…#g=…" autocomplete="off" spellcheck="false" required />
+        <p id="combine-error" class="error" role="alert" hidden></p>
+        <div class="actions">
+          <button type="button" id="combine-cancel">Cancel</button>
+          <button type="submit" id="combine-go" class="primary">Combine</button>
+        </div>
+      </form>
+    </dialog>
 
     <div id="announce" class="sr-only" aria-live="polite"></div>
 

@@ -8,6 +8,7 @@ import { computeLayout } from './layout.js';
 // options:
 //   hidden:            ids drawn only once a selected person's links reach them (loners)
 //   groupOf:           Map id -> friend group index (colours the dot), see groups.js
+//   photos:            Map id -> image URL (profile photos, drawn when zoomed in); setPhotos() later
 //   theme:             colours, see themeFromCss in viewer.js; setTheme() swaps it later
 //   insets():          { right, bottom } px covered by the panel, so focus centres in what is left
 //   onViewChange(byUser) on every zoom/pan; byUser is false for programmatic moves
@@ -16,7 +17,15 @@ import { computeLayout } from './layout.js';
 export function drawGraph(
   canvas,
   graph,
-  { hidden = new Set(), groupOf = new Map(), theme, insets = () => ({ right: 0, bottom: 0 }), onViewChange, onSelectionChange } = {}
+  {
+    hidden = new Set(),
+    groupOf = new Map(),
+    photos = new Map(),
+    theme,
+    insets = () => ({ right: 0, bottom: 0 }),
+    onViewChange,
+    onSelectionChange,
+  } = {}
 ) {
   const mobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const nodeRadius = mobile ? 3.5 : 2;
@@ -135,10 +144,45 @@ export function drawGraph(
   // On-screen dot size: n.r when zoomed in, shrinking when zoomed out so dots stay smaller
   // than the gaps between them (people sit ~20 graph units apart); hubs are capped by
   // the same gap, or they swallow their neighbours.
-  function dotRadius(n) {
+  function plainRadius(n) {
     const k = transform.k;
     const shrink = Math.min(1, (8 * k) / nodeRadius);
     return Math.max(1, Math.min(n.r, Math.max(nodeRadius * 1.5, 9 * k)) * shrink);
+  }
+  // Profile photos replace the dot once people are far enough apart for a face to read
+  // (~1.5x zoom); the dot's colour stays as a ring around it.
+  const PHOTO_MIN = 7;
+  const photoRadius = () => Math.min(14, 4.5 * transform.k);
+  const images = new Map(); // id -> Image, created the first time a photo is drawn
+  function photo(n) {
+    const src = photos.get(n.id);
+    if (!src) return null;
+    let img = images.get(n.id);
+    if (!img) {
+      img = new Image();
+      img.onload = redraw;
+      img.src = src;
+      images.set(n.id, img);
+    }
+    return img.complete && img.naturalWidth ? img : null;
+  }
+  function dotRadius(n) {
+    const r = plainRadius(n);
+    if (!photos.has(n.id)) return r;
+    const pr = photoRadius();
+    return pr >= PHOTO_MIN ? Math.max(r, pr) : r;
+  }
+  function drawPhoto(n, r, k) {
+    const img = photo(n);
+    if (!img || photoRadius() < PHOTO_MIN) return;
+    // the group's colour stays readable as a ring: a quarter of the radius, at least 2px
+    const inner = (r - (n.group === undefined ? 1 : Math.max(2, r / 4))) / k;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, inner, 0, 2 * Math.PI);
+    ctx.clip();
+    ctx.drawImage(img, n.x - inner, n.y - inner, 2 * inner, 2 * inner);
+    ctx.restore();
   }
   const radiusOf = (n) => (n === selection?.node ? Math.max(dotRadius(n) + 3, nodeRadius * 2) : dotRadius(n));
   const labelX = (n, k) => n.x + (radiusOf(n) + textDx) / k;
@@ -350,6 +394,7 @@ export function drawGraph(
         ctx.fill();
         ctx.stroke();
       }
+      for (const [, batch] of batches) for (const n of batch) drawPhoto(n, radiusOf(n), k);
     }
 
     // names, decluttered; hidden when zoomed far out (they would be a few unreadable ones)
@@ -375,6 +420,7 @@ export function drawGraph(
       ctx.strokeStyle = colors.text;
       ctx.lineWidth = (nodeStroke * 2) / k;
       ctx.stroke();
+      drawPhoto(n, radiusOf(n), k);
       ctx.font = `600 ${(textSize * 1.6) / k}px system-ui, sans-serif`;
       ctx.lineWidth = 4 / k;
       ctx.lineJoin = 'round';
@@ -548,6 +594,11 @@ export function drawGraph(
     // null when the pointer leaves the group in the key
     highlightGroup: (index) => {
       hoverGroup = index ?? null;
+      redraw();
+    },
+    setPhotos: (next) => {
+      photos = next;
+      images.clear();
       redraw();
     },
     setTheme: (next) => {

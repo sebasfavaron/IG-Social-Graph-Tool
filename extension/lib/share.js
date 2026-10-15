@@ -210,6 +210,7 @@ export async function decodeGraph(encoded) {
 // The rest of the view rides along after the graph:
 //   #g=<graph>&p=<selected username>&c=<follower|following|mutual>&v=<x>,<y>,<zoom>
 //   &n=<name of group 1>,<name of group 2>,…   (empty = unnamed; groups are numbered by size)
+//   &m=<second owner>   two people's graphs merged (merge.js); the first owner is in g
 //
 // Every character here is one RFC 3986 allows in a fragment. iOS (share sheet, Messages,
 // links opened from other apps) percent-escapes anything else: names used to be joined with
@@ -219,8 +220,9 @@ export async function decodeGraph(encoded) {
 // viewer moves the view by hand, so a fresh link fits whatever screen opens it.
 export const MAX_GROUP_NAME = 30;
 
-export function buildHash({ g, p, c, v, n }) {
+export function buildHash({ g, p, c, v, n, m }) {
   const parts = [`g=${g}`];
+  if (m) parts.push(`m=${encodeURIComponent(m)}`);
   if (p) parts.push(`p=${encodeURIComponent(p)}`);
   if (p && c) parts.push(`c=${c}`);
   if (v) parts.push(`v=${Math.round(v.x)},${Math.round(v.y)},${+v.k.toFixed(2)}`);
@@ -243,6 +245,7 @@ export function parseHash(hash) {
     c: ['follower', 'following', 'mutual'].includes(category) ? category : null,
     v: [x, y, k].every(Number.isFinite) && k > 0 ? { x, y, k } : null,
     n: groupNames(hash),
+    m: params.get('m') || null,
   };
 }
 
