@@ -91,8 +91,11 @@ export function drawGraph(
   let selection = null;
   let only = null; // one category, or null for all three
   let revealed = new Set(); // people shown at full strength for the current selection
-  let hoverGroup = null; // friend group index being pointed at in the key: it takes over the view
-  let showSel = null; // the selection as drawn this frame (null while a group is hovered)
+  let pointedGroup = null; // friend group index being pointed at in the key: it takes over the view
+  let heldGroup = null; // a group kept on from the key; someone selected shows over it
+  let hoverGroup = null; // the group drawn this frame, from the two above
+  let showSel = null; // the selection as drawn this frame (null while a group is shown)
+  const shownGroup = () => pointedGroup ?? (selection ? null : heldGroup);
 
   function selectNode(node) {
     if (!node) {
@@ -328,6 +331,7 @@ export function drawGraph(
       ctx.textAlign = 'start';
       return;
     }
+    hoverGroup = shownGroup();
     showSel = hoverGroup === null ? selection : null;
     const { x, y, k } = transform;
     ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y);
@@ -506,7 +510,7 @@ export function drawGraph(
     let label = null;
     // with someone selected only the highlighted people respond: a faded one reads as
     // background, so clicking there clears the selection like clicking empty space
-    const onlyRevealed = selection !== null && hoverGroup === null;
+    const onlyRevealed = selection !== null && shownGroup() === null;
     for (const n of nodes) {
       if ((n.hidden || onlyRevealed) && !revealed.has(n)) continue;
       const reach = Math.max(mobile ? 14 : 8, radiusOf(n) + 4) / k;
@@ -662,7 +666,12 @@ export function drawGraph(
     clear: () => selectNode(null),
     // null when the pointer leaves the group in the key
     highlightGroup: (index) => {
-      hoverGroup = index ?? null;
+      pointedGroup = index ?? null;
+      redraw();
+    },
+    // keeps a group on while the graph is panned and its people clicked; null lets go
+    holdGroup: (index) => {
+      heldGroup = index ?? null;
       redraw();
     },
     setPhotos: (next) => {

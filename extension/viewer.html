@@ -528,6 +528,36 @@
         color: var(--muted);
         font-variant-numeric: tabular-nums;
       }
+      #groups button.rename,
+      #groups button.hold {
+        flex: none;
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 0;
+        border-radius: 4px;
+        background: none;
+        color: var(--muted);
+        opacity: 0.55;
+      }
+      #groups li:hover button,
+      #groups li:focus-within button {
+        opacity: 1;
+      }
+      #groups button.rename:hover,
+      #groups button.hold:hover {
+        color: var(--fg);
+        background: var(--chip-hover);
+      }
+      #groups li.held {
+        background: var(--chip-hover);
+      }
+      #groups li.held button.hold {
+        opacity: 1;
+        color: var(--c);
+      }
 
       /* ---- invite: on a shared graph, how to make your own ---- */
       #invite {

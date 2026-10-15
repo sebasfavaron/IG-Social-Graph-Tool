@@ -80,6 +80,7 @@ async function show(graph, { encodedGraph = null, fullShare = null } = {}) {
   if (!partner) beforeMerge = null;
   groupAnchorIds = partner ? [] : groupAnchors(groups.groupOf, full.links, groups.sizes.length);
   groupNames = partner ? [] : loadGroupNames();
+  heldGroup = null;
   renderGroups();
   $('graph').setAttribute(
     'aria-label',
@@ -116,6 +117,7 @@ async function show(graph, { encodedGraph = null, fullShare = null } = {}) {
 // a click on the graph selected or cleared someone
 function onSelectionChange() {
   pinned = null;
+  if (!graphControl?.hasSelection()) search.value = '';
   updatePanel();
 }
 
@@ -448,6 +450,8 @@ function choosePerson(id) {
 function clearSelection() {
   graphControl?.clear();
   pinned = null;
+  // a chosen name left in the box came back on focus: the list reopened and selected them again
+  search.value = '';
   updatePanel();
 }
 $('panel-close').onclick = () => {
@@ -514,6 +518,34 @@ function circleKey(graph, first, second, hidden) {
 }
 
 let groupsKeyShown = false;
+let heldGroup = null; // index into the key's rows, kept on until let go
+// pointing leaves the key showing the held group again, or nothing
+const pointAt = (index) => graphControl?.highlightGroup(index);
+function holdGroup(index) {
+  heldGroup = heldGroup === index ? null : index;
+  showHeld();
+}
+function showHeld() {
+  graphControl?.holdGroup(heldGroup === null ? null : groups.labels ? groups.colours[heldGroup] : heldGroup);
+  for (const [i, li] of [...$('groups-list').children].entries()) {
+    li.classList.toggle('held', i === heldGroup);
+    li.querySelector('.hold').setAttribute('aria-pressed', String(i === heldGroup));
+  }
+}
+function holdButton(i, label) {
+  const hold = document.createElement('button');
+  hold.className = 'hold';
+  hold.innerHTML = PIN_ICON;
+  hold.setAttribute('aria-pressed', 'false');
+  hold.setAttribute('aria-label', `Keep ${label} highlighted`);
+  hold.title = 'Keep this group highlighted while you move around the graph';
+  hold.onclick = () => holdGroup(i);
+  return hold;
+}
+const PIN_ICON =
+  '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M10.6 1.3a1 1 0 0 1 1.4 0l2.7 2.7a1 1 0 0 1 0 1.4l-1.5 1.5-1-.2-2.5 2.5.3 2.6-1 1-3-3-3.3 3.3H1.3v-.4l3.3-3.3-3-3 1-1 2.6.3 2.5-2.5-.2-1z"/></svg>';
+const PEN_ICON =
+  '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M11.5 1.5a1.8 1.8 0 0 1 2.5 2.5l-8.6 8.6-3.4.9.9-3.4zM10.4 4 4.2 10.2l-.4 1.5 1.5-.4L11.5 5z"/></svg>';
 function renderGroups() {
   $('groups').hidden = groups.sizes.length < 2;
   $('groups-count').textContent = groups.labels ? '' : `(${groups.sizes.length})`;
@@ -538,9 +570,9 @@ function renderGroups() {
         const count = document.createElement('span');
         count.className = 'n';
         count.textContent = n;
-        li.append(dot, label, count);
-        const on = () => graphControl?.highlightGroup(groups.colours[i]);
-        const off = () => graphControl?.highlightGroup(null);
+        li.append(dot, label, count, holdButton(i, groups.labels[i]));
+        const on = () => pointAt(groups.colours[i]);
+        const off = () => pointAt(null);
         li.addEventListener('mouseenter', on);
         li.addEventListener('mouseleave', off);
         label.addEventListener('focus', on);
@@ -548,6 +580,7 @@ function renderGroups() {
         return li;
       })
     );
+    showHeld();
     return;
   }
   $('groups-list').replaceChildren(
@@ -571,10 +604,20 @@ function renderGroups() {
       const count = document.createElement('span');
       count.className = 'n';
       count.textContent = n;
-      li.append(dot, input, count);
+      // the name box looks like plain text, so a pencil says it can be renamed
+      const rename = document.createElement('button');
+      rename.className = 'rename';
+      rename.innerHTML = PEN_ICON;
+      rename.setAttribute('aria-label', `Rename group ${i + 1}`);
+      rename.title = 'Rename this group';
+      rename.onclick = () => {
+        input.focus();
+        input.select();
+      };
+      li.append(dot, input, count, rename, holdButton(i, `group ${i + 1}`));
       // pointing at a group (or editing its name) highlights its people in the graph
-      const on = () => graphControl?.highlightGroup(i);
-      const off = () => graphControl?.highlightGroup(null);
+      const on = () => pointAt(i);
+      const off = () => pointAt(null);
       li.addEventListener('mouseenter', on);
       li.addEventListener('mouseleave', () => document.activeElement !== input && off());
       input.addEventListener('focus', on);
@@ -582,6 +625,7 @@ function renderGroups() {
       return li;
     })
   );
+  showHeld();
 }
 
 // ---- theme: light, dark, or the system's, with a toggle ------------------------------
