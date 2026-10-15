@@ -69,6 +69,7 @@ async function show(graph, { encodedGraph = null, fullShare = null } = {}) {
         hidden,
         groupOf: groups.groupOf,
         photos,
+        names: new Map(Object.entries(profiles).flatMap(([id, p]) => (p?.name ? [[id, p.name]] : []))),
         theme: themeFromCss(),
         insets: panelInsets,
         onViewChange,

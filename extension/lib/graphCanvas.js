@@ -9,6 +9,7 @@ import { computeLayout } from './layout.js';
 //   hidden:            ids drawn only once a selected person's links reach them (loners)
 //   groupOf:           Map id -> friend group index (colours the dot), see groups.js
 //   photos:            Map id -> image URL (profile photos, drawn when zoomed in); setPhotos() later
+//   names:             Map id -> real name, shown under the username where there is room
 //   theme:             colours, see themeFromCss in viewer.js; setTheme() swaps it later
 //   insets():          { right, bottom } px covered by the panel, so focus centres in what is left
 //   onViewChange(byUser) on every zoom/pan; byUser is false for programmatic moves
@@ -21,6 +22,7 @@ export function drawGraph(
     hidden = new Set(),
     groupOf = new Map(),
     photos = new Map(),
+    names = new Map(),
     theme,
     insets = () => ({ right: 0, bottom: 0 }),
     onViewChange,
@@ -149,10 +151,19 @@ export function drawGraph(
     const shrink = Math.min(1, (8 * k) / nodeRadius);
     return Math.max(1, Math.min(n.r, Math.max(nodeRadius * 1.5, 9 * k)) * shrink);
   }
-  // Profile photos replace the dot once people are far enough apart for a face to read
-  // (~1.5x zoom); the dot's colour stays as a ring around it.
+  // Profile photos replace the dot once a face has room to read; the dot's colour stays as
+  // a ring around it. Each photo grows into the space around its person: up to 42% of the
+  // distance to the nearest neighbour (n.room, so two neighbours' photos never touch), as
+  // far as the zoom allows, and PHOTO_MAX at most. People in a crowd stay dots while the
+  // ones out on their own get a big face.
   const PHOTO_MIN = 7;
-  const photoRadius = () => Math.min(14, 4.5 * transform.k);
+  const PHOTO_MAX = 36;
+  const NAME_FROM = 16; // photo radius from which the real name goes under the username
+  const NAME_SCALE = 0.9; // real names a little smaller than usernames
+  const photoRadius = (n) => Math.min(PHOTO_MAX, 9 * transform.k, 0.42 * (n.room || 20) * transform.k);
+  const hasPhoto = (n) => photos.has(n.id) && photoRadius(n) >= PHOTO_MIN;
+  // two-line label: the username, and under it the real name
+  const twoLines = (n) => names.has(n.id) && photos.has(n.id) && photoRadius(n) >= NAME_FROM;
   const images = new Map(); // id -> Image, created the first time a photo is drawn
   function photo(n) {
     const src = photos.get(n.id);
@@ -168,15 +179,14 @@ export function drawGraph(
   }
   function dotRadius(n) {
     const r = plainRadius(n);
-    if (!photos.has(n.id)) return r;
-    const pr = photoRadius();
-    return pr >= PHOTO_MIN ? Math.max(r, pr) : r;
+    return hasPhoto(n) ? Math.max(r, photoRadius(n)) : r;
   }
   function drawPhoto(n, r, k) {
+    if (!hasPhoto(n)) return;
     const img = photo(n);
-    if (!img || photoRadius() < PHOTO_MIN) return;
-    // the group's colour stays readable as a ring: a quarter of the radius, at least 2px
-    const inner = (r - (n.group === undefined ? 1 : Math.max(2, r / 4))) / k;
+    if (!img) return;
+    // the group's colour stays readable as a ring: a quarter of the radius, 2 to 4 px
+    const inner = (r - (n.group === undefined ? 1 : Math.min(4, Math.max(2, r / 4)))) / k;
     ctx.save();
     ctx.beginPath();
     ctx.arc(n.x, n.y, inner, 0, 2 * Math.PI);
@@ -207,12 +217,14 @@ export function drawGraph(
     ctx.closePath();
   }
 
-  // Names never overlap: most important first (the selection's people, then by number of
-  // connections), and a name that would cover one already placed is skipped. A coarse grid
-  // keeps the overlap check cheap.
+  // Names never overlap each other or anyone's photo: most important first (the
+  // selection's people, then by number of connections). Each name tries the right of its
+  // person, then the left, then below; one that fits nowhere is skipped. A coarse grid
+  // keeps the overlap check cheap. Returns Map person -> { box, x, y, align } in graph
+  // units: where the text goes, and the box clicks on the name hit.
+  let labelSpots = new Map(); // as last drawn, for clicks
   function placeLabels(visible, k) {
-    const placed = new Set();
-    const h = (textSize * 1.15) / k;
+    const placed = new Map();
     const cell = 40 / k;
     const grid = new Map();
     const keys = (x0, y0, x1, y1) => {
@@ -221,34 +233,47 @@ export function drawGraph(
         for (let gy = Math.floor(y0 / cell); gy <= Math.floor(y1 / cell); gy++) out.push(`${gx},${gy}`);
       return out;
     };
+    const occupy = (rect) => {
+      for (const key of keys(...rect)) {
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(rect);
+      }
+    };
+    // photos are in the way too: a name never covers someone's face
+    for (const n of visible) {
+      if (!hasPhoto(n)) continue;
+      const r = radiusOf(n) / k;
+      occupy([n.x - r, n.y - r, n.x + r, n.y + r]);
+    }
     const important = (n) => (hoverGroup !== null ? n.group === hoverGroup : revealed.has(n));
     const order = visible
       .filter((n) => n !== showSel?.node)
       .sort((a, b) => important(b) - important(a) || b.degree - a.degree);
+    const free = ([x0, y0, x1, y1]) => {
+      for (const key of keys(x0, y0, x1, y1)) {
+        for (const r of grid.get(key) || []) if (x0 < r[2] && x1 > r[0] && y0 < r[3] && y1 > r[1]) return false;
+      }
+      return true;
+    };
     for (const n of order) {
-      const x0 = labelX(n, k);
-      const y0 = n.y - h / 2;
-      const x1 = x0 + (labelWidth(n) + 3) / k;
-      const y1 = y0 + h;
-      const cells = keys(x0, y0, x1, y1);
-      let clash = false;
-      for (const key of cells) {
-        for (const r of grid.get(key) || []) {
-          if (x0 < r[2] && x1 > r[0] && y0 < r[3] && y1 > r[1]) {
-            clash = true;
-            break;
-          }
-        }
-        if (clash) break;
+      const h = (textSize * (twoLines(n) ? 2.4 : 1.15)) / k;
+      const w = (labelWidth(n) + 3) / k;
+      const gap = (radiusOf(n) + textDx) / k;
+      const spots = [
+        { box: [n.x + gap, n.y - h / 2, n.x + gap + w, n.y + h / 2], x: n.x + gap, y: n.y, align: 'left' },
+        { box: [n.x - gap - w, n.y - h / 2, n.x - gap, n.y + h / 2], x: n.x - gap, y: n.y, align: 'right' },
+      ];
+      // below only for photos: under a dot the name would read as the next person's
+      if (hasPhoto(n)) {
+        const top = n.y + (radiusOf(n) + 3) / k;
+        spots.push({ box: [n.x - w / 2, top, n.x + w / 2, top + h], x: n.x, y: top + h / 2, align: 'center' });
       }
-      if (clash) continue;
-      const rect = [x0, y0, x1, y1];
-      for (const key of cells) {
-        if (!grid.has(key)) grid.set(key, []);
-        grid.get(key).push(rect);
-      }
-      placed.add(n);
+      const spot = spots.find((c) => free(c.box));
+      if (!spot) continue;
+      occupy(spot.box);
+      placed.set(n, spot);
     }
+    labelSpots = placed;
     return placed;
   }
 
@@ -399,15 +424,29 @@ export function drawGraph(
     }
 
     // names, decluttered; hidden when zoomed far out (they would be a few unreadable ones)
+    labelSpots = new Map();
     if (k > 0.25 || showSel) {
       const placed = placeLabels(visible, k);
-      ctx.font = `${textSize / k}px system-ui, sans-serif`;
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = colors.text;
+      const line = (textSize * 0.62) / k; // half the gap between the two lines' centres
       for (const alpha of [0.1, 0.85, 1]) {
         ctx.globalAlpha = alpha;
-        for (const n of placed) if (opacity(n) === alpha) ctx.fillText(n.id, labelX(n, k), n.y);
+        ctx.font = `${textSize / k}px system-ui, sans-serif`;
+        ctx.fillStyle = colors.text;
+        for (const [n, spot] of placed) {
+          if (opacity(n) !== alpha) continue;
+          ctx.textAlign = spot.align;
+          ctx.fillText(n.id, spot.x, twoLines(n) ? spot.y - line : spot.y);
+        }
+        ctx.font = `${(textSize * NAME_SCALE) / k}px system-ui, sans-serif`;
+        ctx.fillStyle = colors.muted;
+        for (const [n, spot] of placed) {
+          if (opacity(n) !== alpha || !twoLines(n)) continue;
+          ctx.textAlign = spot.align;
+          ctx.fillText(names.get(n.id), spot.x, spot.y + line);
+        }
       }
+      ctx.textAlign = 'start';
     }
 
     // the selected person on top: bigger, outlined, name with a halo
@@ -426,9 +465,19 @@ export function drawGraph(
       ctx.lineWidth = 4 / k;
       ctx.lineJoin = 'round';
       ctx.strokeStyle = colors.bg;
-      ctx.strokeText(n.id, labelX(n, k), n.y);
+      const name = names.get(n.id);
+      const up = name ? (textSize * 0.55) / k : 0;
+      ctx.strokeText(n.id, labelX(n, k), n.y - up);
       ctx.fillStyle = colors.text;
-      ctx.fillText(n.id, labelX(n, k), n.y);
+      ctx.fillText(n.id, labelX(n, k), n.y - up);
+      if (name) {
+        // the selected person's real name, always (their panel shows it too)
+        ctx.font = `${textSize / k}px system-ui, sans-serif`;
+        const y = n.y + (textSize * 0.95) / k;
+        ctx.strokeText(name, labelX(n, k), y);
+        ctx.fillStyle = colors.muted;
+        ctx.fillText(name, labelX(n, k), y);
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -440,8 +489,10 @@ export function drawGraph(
     if (n.labelWidth === undefined) {
       measure.font = `${textSize}px system-ui, sans-serif`;
       n.labelWidth = measure.measureText(n.id).width;
+      const name = names.get(n.id);
+      n.nameWidth = name ? measure.measureText(name).width * NAME_SCALE : 0;
     }
-    return n.labelWidth;
+    return twoLines(n) ? Math.max(n.labelWidth, n.nameWidth) : n.labelWidth;
   }
 
   // The person under the pointer: their dot (nearest within a few pixels) or their name,
@@ -465,10 +516,15 @@ export function drawGraph(
         best = n;
       }
       if (!best) {
-        const scale = n === selection?.node ? 1.6 : 1;
-        const left = labelX(n, k);
-        const half = (textSize * scale * 0.6) / k;
-        if (gx >= left && gx <= left + (labelWidth(n) * scale) / k && Math.abs(gy - n.y) <= half) label = n;
+        // a name hits where it was drawn; the selected person's sits on their right, bigger
+        if (n === selection?.node) {
+          const left = labelX(n, k);
+          const half = (textSize * 1.6 * 0.6) / k;
+          if (gx >= left && gx <= left + (labelWidth(n) * 1.6) / k && Math.abs(gy - n.y) <= half) label = n;
+        } else {
+          const box = labelSpots.get(n)?.box;
+          if (box && gx >= box[0] && gx <= box[2] && gy >= box[1] && gy <= box[3]) label = n;
+        }
       }
     }
     return best || label;
@@ -564,6 +620,18 @@ export function drawGraph(
       x: nodes.reduce((sum, d) => sum + d.x, 0) / nodes.length,
       y: nodes.reduce((sum, d) => sum + d.y, 0) / nodes.length,
     };
+    // Room around each person: distance to the nearest one shown. Plain pairs: ~0.3 M
+    // checks for 500 people, once; a grid would be needed for graphs ten times bigger.
+    const shownNodes = nodes.filter((d) => !d.hidden);
+    for (const n of nodes) {
+      let best = Infinity;
+      for (const m of shownNodes) {
+        if (m === n) continue;
+        const d = (m.x - n.x) ** 2 + (m.y - n.y) ** 2;
+        if (d < best) best = d;
+      }
+      n.room = Number.isFinite(best) ? Math.sqrt(best) : 20;
+    }
     laidOut = true;
     canvas.dataset.ready = '1';
     fitToView();
