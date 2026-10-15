@@ -3,7 +3,8 @@ import { drawGraph } from './lib/graphCanvas.js';
 import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
 import { friendGroups } from './lib/groups.js';
-import { MAX_GROUP_NAME, SHARE_BASE_URL, SHARE_PREFIX, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
+import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
+import { downloadGist, packShare, seal, unpackShare, unseal, uploadGist } from './lib/vault.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { CIRCLE, circles, mergeGraphs } from './lib/merge.js';
 
@@ -22,6 +23,9 @@ let beforeMerge = null; // the graph shown before combining, to go back to
 // Names, photos and flags from the crawl (extension only: share links carry usernames).
 let profiles = {}; // username -> { name, pic, private, verified }
 let photos = new Map(); // username -> data URL
+let ownProfiles = {}; // the crawl's, to go back to after looking at someone's full share
+let ownPhotos = new Map();
+let shareRef = null; // { s, k } when the graph on screen came from a full-share link
 const nameOf = (id) => profiles[id]?.name || '';
 // lower case without accents, so "jose" finds "José"
 const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
@@ -30,7 +34,8 @@ const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 // encodedGraph: the packed form when the graph came from a link, so it is not redone.
 // Resolves once the layout is in, so callers can select and move the view.
-async function show(graph, { encodedGraph = null } = {}) {
+async function show(graph, { encodedGraph = null, fullShare = null } = {}) {
+  shareRef = fullShare;
   const username = graph.username || graph.metadata?.loggedUsername;
   const partner = graph.partner && graph.nodes.some((n) => n.id === graph.partner) ? graph.partner : null;
   const total = graph.nodes.length;
@@ -83,6 +88,7 @@ async function show(graph, { encodedGraph = null } = {}) {
   );
   $('share').hidden = !shown;
   $('combine').hidden = !shown || !username || !!partner;
+  $('share-full').hidden = !inExtension || !shown;
   $('uncombine').hidden = !beforeMerge;
   if (beforeMerge) $('uncombine').querySelector('.label').textContent = `@${beforeMerge.username} only`;
   pinned = null;
@@ -113,15 +119,17 @@ function onSelectionChange() {
 
 // The address bar always holds a link to what is on screen (on the public page; an
 // extension page's address is no use to anyone else).
-function currentHash(g) {
-  return buildHash({
-    g,
+function viewState() {
+  return {
     p: graphControl?.selected(),
     c: pinned,
     v: viewTouched && graphControl ? graphControl.view() : null,
     n: shown?.partner ? null : groupNames,
     m: shown?.partner,
-  });
+  };
+}
+function currentHash(g) {
+  return buildHash({ g, ...(shareRef || {}), ...viewState() });
 }
 let syncTimer = null;
 function syncUrl() {
@@ -626,6 +634,97 @@ document.addEventListener('keydown', (e) => {
 
 $('example').onclick = () => show(EXAMPLE_GRAPH);
 
+// ---- full share: names and photos too, encrypted into a secret gist (vault.js) -------
+async function openFullShare(ref, key) {
+  return unpackShare(await unseal(await downloadGist(ref), key));
+}
+
+const uploadDialog = $('upload-dialog');
+const TOKEN_KEY = 'githubToken';
+let lastUpload = null; // { shown, ref, key }: sharing the same graph again reuses its gist
+const savedToken = async () => (await chrome.storage.local.get(TOKEN_KEY))[TOKEN_KEY] || '';
+
+async function prepareUploadDialog() {
+  const token = await savedToken();
+  $('token-row').hidden = !!token;
+  $('forget-token').hidden = !token;
+  $('gh-token').value = '';
+  $('gh-token').required = !token;
+  $('upload-error').hidden = true;
+  $('upload-result').hidden = true;
+  $('upload-status').textContent = '';
+  $('upload-go').disabled = false;
+  $('upload-go').hidden = false;
+}
+$('share-full').onclick = async () => {
+  await prepareUploadDialog();
+  uploadDialog.showModal();
+};
+$('upload-cancel').onclick = () => uploadDialog.close();
+$('forget-token').onclick = async () => {
+  await chrome.storage.local.remove(TOKEN_KEY);
+  lastUpload = null;
+  await prepareUploadDialog();
+};
+$('upload-copy').onclick = async () => {
+  $('upload-link').select();
+  try {
+    await navigator.clipboard.writeText($('upload-link').value);
+    $('upload-status').textContent = 'Copied.';
+  } catch (_) {
+    document.execCommand('copy');
+  }
+};
+$('upload-form').onsubmit = async (e) => {
+  e.preventDefault();
+  if (!shown) return;
+  const status = (text) => ($('upload-status').textContent = text);
+  $('upload-error').hidden = true;
+  $('upload-go').disabled = true;
+  try {
+    const typed = $('gh-token').value.trim();
+    const token = typed || (await savedToken());
+    if (lastUpload?.shown !== shown) {
+      status('Encrypting…');
+      const ids = new Set(shown.nodes.map((n) => n.id));
+      const packed = await packShare({
+        g: encoded || (await encodeGraph(shown)),
+        profiles: Object.fromEntries(Object.entries(profiles).filter(([u]) => ids.has(u))),
+        photos: new Map([...photos].filter(([u]) => ids.has(u))),
+      });
+      const { key, content } = await seal(packed);
+      status(`Uploading ${(content.length / 1e6).toFixed(1)} MB to a secret gist…`);
+      const ref = await uploadGist(token, content);
+      if (typed) await chrome.storage.local.set({ [TOKEN_KEY]: typed });
+      lastUpload = { shown, ref, key };
+    }
+    const url = SHARE_BASE_URL + buildHash({ s: lastUpload.ref, k: lastUpload.key, ...viewState() });
+    $('upload-link').value = url;
+    $('upload-result').hidden = false;
+    $('token-row').hidden = true;
+    $('upload-go').hidden = true;
+    try {
+      await navigator.clipboard.writeText(url);
+      status(`Link copied · ${url.length} characters.`);
+    } catch (_) {
+      status('Uploaded. Copy the link below.');
+    }
+    $('upload-link').select();
+  } catch (err) {
+    status('');
+    $('upload-error').textContent = `Could not share: ${err.message}.`;
+    $('upload-error').hidden = false;
+    if (err.badToken) {
+      await chrome.storage.local.remove(TOKEN_KEY);
+      $('token-row').hidden = false;
+      $('gh-token').required = true;
+      $('forget-token').hidden = true;
+    }
+  } finally {
+    $('upload-go').disabled = false;
+  }
+};
+
 // ---- combine: a friend's share link drawn together with this graph -----------------
 const dialog = $('combine-dialog');
 $('combine').onclick = () => {
@@ -641,14 +740,23 @@ $('combine-form').onsubmit = async (e) => {
     $('combine-error').hidden = false;
   };
   const text = $('combine-link').value.trim();
-  const at = text.indexOf(SHARE_PREFIX);
+  const at = text.search(/#[gs]=/);
   const state = at >= 0 ? parseHash(text.slice(at)) : null;
-  if (!state?.g) return fail('That is not a share link: they contain "#g=" followed by the graph.');
+  if (!state?.g && !state?.s) return fail('That is not a share link: they contain "#g=" or "#s=" after the address.');
   if (state.m) return fail('That link already combines two people. Ask for one with only theirs.');
   if (!shown) return;
   $('combine-go').disabled = true;
   try {
-    const friend = await decodeGraph(state.g);
+    let friend;
+    if (state.s) {
+      // a full share brings their names and photos; ours win where both have someone
+      const full = await openFullShare(state.s, state.k);
+      friend = await decodeGraph(full.g);
+      profiles = { ...full.profiles, ...profiles };
+      photos = new Map([...full.photos, ...photos]);
+    } else {
+      friend = await decodeGraph(state.g);
+    }
     const merged = mergeGraphs(shown, friend);
     const original = shown;
     dialog.close();
@@ -668,15 +776,26 @@ $('uncombine').onclick = () => beforeMerge && show(beforeMerge);
 // "#", never sent to a server). From the extension the link points at the public page.
 async function openShareHash() {
   const state = parseHash(location.hash);
-  if (!state?.g) return false;
+  if (!state?.g && !state?.s) return false;
   try {
-    if (state.g !== encoded) {
+    if (state.s && state.s !== shareRef?.s) {
+      $('counts').textContent = 'Opening the shared graph…';
+      const full = await openFullShare(state.s, state.k);
+      profiles = full.profiles;
+      photos = full.photos;
+      const graph = await decodeGraph(full.g);
+      if (state.m) graph.partner = state.m;
+      await show(graph, { encodedGraph: full.g, fullShare: { s: state.s, k: state.k } });
+    } else if (state.g && (state.g !== encoded || shareRef)) {
+      profiles = ownProfiles;
+      photos = ownPhotos;
       const graph = await decodeGraph(state.g);
       if (state.m) graph.partner = state.m;
       await show(graph, { encodedGraph: state.g });
     }
   } catch (err) {
-    alert(`This share link looks cut off or broken (${err.message}). Ask for it again.`);
+    alert(`This share link did not open: ${err.message}. Ask for it again.`);
+    if (state.s) $('counts').textContent = '';
     return false;
   }
   if (!graphControl) return true;
@@ -849,12 +968,15 @@ const toPhotos = (thumbs = {}) =>
   new Map(Object.entries(thumbs).flatMap(([username, t]) => (t?.data ? [[username, t.data]] : [])));
 if (inExtension) {
   const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
-  profiles = crawl?.profiles || {};
-  photos = toPhotos(thumbs);
+  profiles = ownProfiles = crawl?.profiles || {};
+  photos = ownPhotos = toPhotos(thumbs);
   // photos keep arriving while the crawl runs
   chrome.storage.onChanged.addListener((changes) => {
     if (!changes.thumbs) return;
-    photos = toPhotos(changes.thumbs.newValue);
+    const fresh = toPhotos(changes.thumbs.newValue);
+    if (photos === ownPhotos) photos = fresh;
+    ownPhotos = fresh;
+    if (photos !== fresh) return; // looking at someone else's full share
     graphControl?.setPhotos(photos);
     const selected = graphControl?.selected();
     if (selected) paintWho(selected);

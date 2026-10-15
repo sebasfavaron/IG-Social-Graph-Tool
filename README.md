@@ -31,13 +31,27 @@ Requests go from an instagram.com tab with your own session, and the data stays 
 
 **Keyboard and screen readers:** every control is a real button or field with a visible focus ring; each selection is announced ("Selected @x. 10 follow @x…"); "reduce motion" skips the pan animation.
 
+### Share with names and photos
+
+A share link carries usernames only. **Share with photos…** (in the extension) shares everything you see: the graph, real names and photos, ~3 MB for 460 people. That is too big for a link, so the extension:
+
+1. encrypts it in your browser with a new random key;
+2. uploads the encrypted bytes as a **secret gist** on your GitHub;
+3. copies a short link (~140 characters) with the gist's address and the key after the `#`.
+
+GitHub stores bytes it cannot read, and the key never reaches any server. A secret gist is unlisted, not private: the link is what gives access, so treat it like the data itself. Sharing the same graph again reuses its gist. Delete a gist on GitHub to make its link stop working.
+
+It needs a GitHub token, pasted once and kept in that browser: create a [fine-grained token](https://github.com/settings/personal-access-tokens/new) with only **Gists: read and write**. That token can create, edit and delete any of your gists and nothing else. **Forget token** in the same dialog removes it.
+
+Opening the link needs no extension and no GitHub account. **Combine with a friend…** accepts these links too, and brings their names and photos along.
+
 ### Combine two people's graphs
 
 **Combine with a friend…** takes a share link a friend made and draws both graphs as one. The key switches from friend groups to circles: the people you both know, the ones only you know, the ones only they know. Point at a circle to highlight its people. The combined graph has its own share link, and **@you only** goes back.
 
 ### Share links
 
-A share link carries the graph inside itself, after the `#`, which browsers never send to a server, so nothing is stored anywhere: ~10 000 characters for 462 people and 10 000 connections. The format is built for these graphs: each pair of people is stored once with its direction, your own links are two bits per person, and people are numbered friend group by friend group so the people someone is connected to get nearby numbers. It also keeps who is selected, which group is kept on, the zoom and your friend-group names. On the site the address bar always holds the current link, so copying it from there works too. Anyone who gets the link sees those usernames and who follows whom. Real names and photos stay in the extension: links carry usernames only.
+A share link carries the graph inside itself, after the `#`, which browsers never send to a server, so nothing is stored anywhere: ~10 000 characters for 462 people and 10 000 connections. The format is built for these graphs: each pair of people is stored once with its direction, your own links are two bits per person, and people are numbered friend group by friend group so the people someone is connected to get nearby numbers. It also keeps who is selected, which group is kept on, the zoom and your friend-group names. On the site the address bar always holds the current link, so copying it from there works too. Anyone who gets the link sees those usernames and who follows whom. Real names and photos stay in the extension: links carry usernames only (see the next section for sharing those).
 
 The site is the extension's viewer, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it.
 
@@ -67,6 +81,7 @@ The site is the extension's viewer, published from `extension/` by [`.github/wor
 | `extension/lib/groups.js` | friend groups by modularity (Louvain) |
 | `extension/lib/groupNames.js` | keeps each friend-group name on its group across crawls |
 | `extension/lib/merge.js` | combines two graphs and tells whose circle each person is in |
+| `extension/lib/vault.js` | full shares: packs names and photos, encrypts (AES-GCM), uploads to and reads from a secret gist |
 | `extension/lib/share.js` | packs the graph and view state into the link: `#g=…&p=…&c=…&v=…&n=…&m=…` |
 | `extension/viewer.html`, `viewer.js` | the page: panel, search, groups key, themes, link state |
 

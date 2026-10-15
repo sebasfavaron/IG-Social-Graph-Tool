@@ -45,13 +45,13 @@ test('garbage is rejected, not drawn', async () => {
 
 test('view state round-trips through the hash and junk values are dropped', async () => {
   const { buildHash, parseHash } = await import('../extension/lib/share.js');
-  const hash = buildHash({ g: 'abc_-', p: 'jose.favaron', c: 'mutual', v: { x: -12.4, y: 30.6, k: 2.456 } });
+  const hash = buildHash({ g: 'abc_-', s: null, k: null, p: 'jose.favaron', c: 'mutual', v: { x: -12.4, y: 30.6, k: 2.456 } });
   assert.equal(hash, '#g=abc_-&p=jose.favaron&c=mutual&v=-12,31,2.46');
-  assert.deepEqual(parseHash(hash), { g: 'abc_-', p: 'jose.favaron', c: 'mutual', v: { x: -12, y: 31, k: 2.46 }, n: null, m: null });
-  assert.deepEqual(parseHash('#g=abc&c=evil&v=1,2'), { g: 'abc', p: null, c: null, v: null, n: null, m: null });
+  assert.deepEqual(parseHash(hash), { g: 'abc_-', s: null, k: null, p: 'jose.favaron', c: 'mutual', v: { x: -12, y: 31, k: 2.46 }, n: null, m: null });
+  assert.deepEqual(parseHash('#g=abc&c=evil&v=1,2'), { g: 'abc', s: null, k: null, p: null, c: null, v: null, n: null, m: null });
   assert.equal(parseHash('#other'), null);
   // old links carried only the graph
-  assert.deepEqual(parseHash('#g=abc'), { g: 'abc', p: null, c: null, v: null, n: null, m: null });
+  assert.deepEqual(parseHash('#g=abc'), { g: 'abc', s: null, k: null, p: null, c: null, v: null, n: null, m: null });
 });
 
 test('group names survive the link, including separators and odd characters', async () => {
@@ -97,7 +97,7 @@ const iosEscape = (hash) => '#' + hash.slice(1).replace(/[^A-Za-z0-9\-._~!$&'()*
 test('group names survive iOS escaping the link', async () => {
   const { buildHash, parseHash } = await import('../extension/lib/share.js');
   const names = ['School | 2010', 'Work, co & más', '', 'Família 🎉'];
-  const hash = buildHash({ g: 'abc_-', p: 'jose.favaron', c: 'mutual', v: { x: -12, y: 31, k: 2.46 }, n: names });
+  const hash = buildHash({ g: 'abc_-', s: null, k: null, p: 'jose.favaron', c: 'mutual', v: { x: -12, y: 31, k: 2.46 }, n: names });
   assert.equal(iosEscape(hash), hash, 'the link has a character iOS would rewrite');
   assert.deepEqual(parseHash(iosEscape(hash)).n, names);
 });
