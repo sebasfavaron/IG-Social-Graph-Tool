@@ -529,23 +529,40 @@ function showHeld() {
   graphControl?.holdGroup(heldGroup === null ? null : groups.labels ? groups.colours[heldGroup] : heldGroup);
   for (const [i, li] of [...$('groups-list').children].entries()) {
     li.classList.toggle('held', i === heldGroup);
-    li.querySelector('.hold').setAttribute('aria-pressed', String(i === heldGroup));
+    li.querySelector('.pick').setAttribute('aria-pressed', String(i === heldGroup));
   }
 }
-function holdButton(i, label) {
-  const hold = document.createElement('button');
-  hold.className = 'hold';
-  hold.innerHTML = PIN_ICON;
-  hold.setAttribute('aria-pressed', 'false');
-  hold.setAttribute('aria-label', `Keep ${label} highlighted`);
-  hold.title = 'Keep this group highlighted while you move around the graph';
-  hold.onclick = () => holdGroup(i);
-  return hold;
-}
-const PIN_ICON =
-  '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M10.6 1.3a1 1 0 0 1 1.4 0l2.7 2.7a1 1 0 0 1 0 1.4l-1.5 1.5-1-.2-2.5 2.5.3 2.6-1 1-3-3-3.3 3.3H1.3v-.4l3.3-3.3-3-3 1-1 2.6.3 2.5-2.5-.2-1z"/></svg>';
 const PEN_ICON =
   '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M11.5 1.5a1.8 1.8 0 0 1 2.5 2.5l-8.6 8.6-3.4.9.9-3.4zM10.4 4 4.2 10.2l-.4 1.5 1.5-.4L11.5 5z"/></svg>';
+
+// One row of the key: clicking anywhere on it (but the pencil) keeps that group
+// highlighted while the graph is panned and its people clicked; again lets go.
+// Pointing at it previews the group.
+function groupRow(i, n, colour, text) {
+  const li = document.createElement('li');
+  li.style.setProperty('--c', `var(--g${colour + 1})`);
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  // a button, so holding is reachable from the keyboard too
+  const pick = document.createElement('button');
+  pick.className = 'pick';
+  pick.title = 'Click to keep this group highlighted';
+  const label = document.createElement('span');
+  label.className = 'label';
+  label.textContent = text;
+  const count = document.createElement('span');
+  count.className = 'n';
+  count.textContent = n;
+  pick.append(label, count);
+  li.append(dot, pick);
+  li.onclick = (e) => !e.target.closest('.rename, input') && holdGroup(i);
+  li.addEventListener('mouseenter', () => pointAt(colour));
+  li.addEventListener('mouseleave', () => !li.classList.contains('editing') && pointAt(null));
+  pick.addEventListener('focus', () => pointAt(colour));
+  pick.addEventListener('blur', () => pointAt(null));
+  return { li, pick, label };
+}
+
 function renderGroups() {
   $('groups').hidden = groups.sizes.length < 2;
   $('groups-count').textContent = groups.labels ? '' : `(${groups.sizes.length})`;
@@ -557,71 +574,59 @@ function renderGroups() {
   }
   if (groups.labels) {
     $('groups-list').replaceChildren(
-      ...groups.sizes.map((n, i) => {
-        const li = document.createElement('li');
-        li.style.setProperty('--c', `var(--g${groups.colours[i] + 1})`);
-        const dot = document.createElement('span');
-        dot.className = 'dot';
-        // a button, so the highlight is reachable from the keyboard too
-        const label = document.createElement('button');
-        label.className = 'circle';
-        label.textContent = shorten(groups.labels[i], 26);
-        label.title = 'Point at this to highlight its people';
-        const count = document.createElement('span');
-        count.className = 'n';
-        count.textContent = n;
-        li.append(dot, label, count, holdButton(i, groups.labels[i]));
-        const on = () => pointAt(groups.colours[i]);
-        const off = () => pointAt(null);
-        li.addEventListener('mouseenter', on);
-        li.addEventListener('mouseleave', off);
-        label.addEventListener('focus', on);
-        label.addEventListener('blur', off);
-        return li;
-      })
+      ...groups.sizes.map((n, i) => groupRow(i, n, groups.colours[i], shorten(groups.labels[i], 26)).li)
     );
     showHeld();
     return;
   }
   $('groups-list').replaceChildren(
     ...groups.sizes.map((n, i) => {
-      const li = document.createElement('li');
-      li.style.setProperty('--c', `var(--g${i + 1})`);
-      const dot = document.createElement('span');
-      dot.className = 'dot';
+      const { li, pick, label } = groupRow(i, n, i, groupNames[i] || `Group ${i + 1}`);
+      pick.setAttribute('aria-label', `${label.textContent} (${n} people)`);
+      // renaming swaps the row's text for a box, only from the pencil
       const input = document.createElement('input');
-      input.value = groupNames[i] || '';
+      input.hidden = true;
       input.placeholder = `Group ${i + 1}`;
       input.maxLength = MAX_GROUP_NAME;
       input.setAttribute('aria-label', `Name for group ${i + 1} (${n} people)`);
-      input.title = 'Click to name this group; the name is saved in the share link';
       input.oninput = () => saveGroupName(i, input.value.trim());
+      let before = '';
+      const finish = () => {
+        label.textContent = groupNames[i] || `Group ${i + 1}`;
+        pick.setAttribute('aria-label', `${label.textContent} (${n} people)`);
+        li.classList.remove('editing');
+        input.hidden = true;
+        pick.hidden = false;
+        if (!li.matches(':hover')) pointAt(null);
+      };
       // block body on purpose: a DOM0 handler returning false cancels the key, so a
       // one-liner `e.key === 'Enter' && …` swallowed every letter typed
       input.onkeydown = (e) => {
-        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          input.value = before;
+          saveGroupName(i, before);
+        }
+        // back to the pencil: focusing the row would highlight its group over a held one
+        if (e.key === 'Enter' || e.key === 'Escape') rename.focus();
       };
-      const count = document.createElement('span');
-      count.className = 'n';
-      count.textContent = n;
-      // the name box looks like plain text, so a pencil says it can be renamed
+      input.addEventListener('blur', finish);
       const rename = document.createElement('button');
       rename.className = 'rename';
       rename.innerHTML = PEN_ICON;
       rename.setAttribute('aria-label', `Rename group ${i + 1}`);
-      rename.title = 'Rename this group';
+      rename.title = 'Rename this group (saved in the share link)';
       rename.onclick = () => {
+        before = groupNames[i] || '';
+        input.value = before;
+        li.classList.add('editing');
+        pick.hidden = true;
+        input.hidden = false;
         input.focus();
         input.select();
+        pointAt(i);
       };
-      li.append(dot, input, count, rename, holdButton(i, `group ${i + 1}`));
-      // pointing at a group (or editing its name) highlights its people in the graph
-      const on = () => pointAt(i);
-      const off = () => pointAt(null);
-      li.addEventListener('mouseenter', on);
-      li.addEventListener('mouseleave', () => document.activeElement !== input && off());
-      input.addEventListener('focus', on);
-      input.addEventListener('blur', off);
+      li.append(input, rename);
       return li;
     })
   );

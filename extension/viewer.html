@@ -496,30 +496,36 @@
         border-radius: 50%;
         background: var(--c);
       }
+      #groups li {
+        cursor: pointer;
+      }
+      #groups li [hidden] {
+        display: none !important;
+      }
       #groups input {
         min-width: 0;
         flex: 1;
         padding: 1px 4px;
-        border: 1px solid transparent;
+        border: 1px solid var(--line);
         border-radius: 4px;
-        background: transparent;
+        background: var(--surface-solid);
         color: inherit;
         font: inherit;
       }
-      #groups input:hover {
-        border-color: var(--line);
-      }
-      #groups input:focus {
-        border-color: var(--line);
-        background: var(--surface-solid);
-      }
-      #groups button.circle {
+      #groups button.pick {
         flex: 1;
         min-width: 0;
-        padding: 1px 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 4px;
         border: 0;
         background: none;
         text-align: left;
+      }
+      #groups .label {
+        flex: 1;
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -528,8 +534,7 @@
         color: var(--muted);
         font-variant-numeric: tabular-nums;
       }
-      #groups button.rename,
-      #groups button.hold {
+      #groups button.rename {
         flex: none;
         display: grid;
         place-items: center;
@@ -542,21 +547,21 @@
         color: var(--muted);
         opacity: 0.55;
       }
-      #groups li:hover button,
-      #groups li:focus-within button {
+      #groups li:hover button.rename,
+      #groups li:focus-within button.rename {
         opacity: 1;
       }
-      #groups button.rename:hover,
-      #groups button.hold:hover {
+      #groups button.rename:hover {
         color: var(--fg);
-        background: var(--chip-hover);
+        background: var(--surface-solid);
       }
+      /* held: kept highlighted until clicked again */
       #groups li.held {
         background: var(--chip-hover);
+        box-shadow: inset 3px 0 0 var(--c);
       }
-      #groups li.held button.hold {
-        opacity: 1;
-        color: var(--c);
+      #groups li.held .label {
+        font-weight: 700;
       }
 
       /* ---- invite: on a shared graph, how to make your own ---- */
