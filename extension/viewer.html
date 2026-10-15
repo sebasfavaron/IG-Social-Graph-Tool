@@ -529,6 +529,23 @@
         font-variant-numeric: tabular-nums;
       }
 
+      /* ---- invite: on a shared graph, how to make your own ---- */
+      #invite {
+        position: fixed;
+        right: 10px;
+        bottom: 10px;
+        padding: 6px 12px;
+        color: var(--fg);
+        text-decoration: none;
+        font-weight: 600;
+      }
+      #invite:hover {
+        background: var(--chip-hover);
+      }
+      #invite[hidden],
+      body.selected #invite {
+        display: none;
+      }
       #empty[hidden] {
         display: none;
       }
@@ -677,6 +694,10 @@
         body.selected #groups {
           display: none;
         }
+        #invite {
+          right: 8px;
+          bottom: 8px;
+        }
       }
       @media (prefers-reduced-motion: reduce) {
         .search input {
@@ -746,6 +767,11 @@
         <ul></ul>
       </section>
     </aside>
+
+    <a id="invite" class="panel-box" hidden target="_blank" rel="noopener"
+       title="A free Chrome extension; your followers never leave your browser until you share them">
+      <span class="wide-only">Map your own followers ↗</span><span class="narrow-only">Map yours ↗</span>
+    </a>
 
     <details id="groups" class="panel-box" hidden>
       <summary id="groups-title">Friend groups <span id="groups-count" class="muted"></span></summary>

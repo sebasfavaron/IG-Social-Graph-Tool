@@ -88,6 +88,8 @@ async function show(graph, { encodedGraph = null, fullShare = null } = {}) {
       '. Use search to pick someone; their connections are listed in a panel.'
   );
   $('share').hidden = !shown;
+  // someone looking at a shared graph: how to make their own (the extension has it already)
+  $('invite').hidden = inExtension || !shown;
   $('combine').hidden = !shown || !username || !!partner;
   $('uncombine').hidden = !beforeMerge;
   if (beforeMerge) $('uncombine').querySelector('.label').textContent = `@${beforeMerge.username} only`;
@@ -895,6 +897,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+$('invite').href = INSTALL_URL;
 if (!inExtension) {
   const link = Object.assign(document.createElement('a'), {
     href: INSTALL_URL,
