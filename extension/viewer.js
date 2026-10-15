@@ -8,7 +8,7 @@ import { createShare, downloadShare, photosFromThumbs, unpackShare, unseal } fro
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { CIRCLE, circles, mergeGraphs } from './lib/merge.js';
 
-const INSTALL_URL = 'https://github.com/sebasfavaron/IG-Social-Graph-Tool#use-it-chrome-extension';
+const INSTALL_URL = 'https://github.com/sebasfavaron/IG-Social-Graph-Tool#map-your-own-followers-chrome-extension';
 
 const $ = (id) => document.getElementById(id);
 // Inside the extension the graph comes from the crawl; as a plain web page (GitHub
