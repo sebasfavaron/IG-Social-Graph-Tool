@@ -12,7 +12,7 @@ Not technical? [**The install page**](https://sebasfavaron.github.io/IG-Social-G
 2. Log in to [instagram.com](https://www.instagram.com) in that browser.
 3. Click the extension icon → **Start**. It lists your followers, then asks Instagram, for each of them, which accounts you follow also follow them.
 4. Leave it running. The popup shows progress and the time left, measured from the pace so far (Instagram's pauses included); the icon badge shows the percentage. You can close the popup, pause and resume, or restart the browser: progress is saved.
-5. **View graph** opens the graph in a new tab. **Publish & copy link** makes your graph visible to your network (it asks first, in warning colours) and copies a short link anyone can open, no extension needed, with names and photos included.
+5. **View & publish on the web** opens the site, which reads your crawl from the extension and draws it. There, **Publish & copy link** makes your graph visible to your network (it asks first, in warning colours) and copies a short link.
 
 The crawl also keeps everyone's real name and profile photo, which come with the same lists at no extra request. A crawl made before that can get them with **Get names & photos** in the popup: your followers list again, about one request per 50 followers.
 
@@ -43,7 +43,9 @@ The database keeps one graph per person and one row per Instagram account. Someo
 
 **Publish yours to see the others.** Graphs are seen among people who published their own. Two graphs are linked when their owners follow each other (one way or both); your network is every graph you can reach through such links, friends of friends included, and that is what the home list, links and Explore show you. Each side of a link is vouched for by the other person's own crawl, so a made-up account links to nobody and only ever sees itself. Before you publish, a link to someone's graph shows who published it and how many people it holds, and how to get in.
 
-The extension keeps your key, so the site learns who you are from a link the extension opens (**See the network on the web** in the popup, or **Explore data**); after that the site remembers.
+The site keeps your key (in this browser's storage for the site). A key can also be handed over with a personal link (`#me=<you>&mk=<key>`), which the site adopts and removes from the address bar; the extension's own page still passes it along to **Explore data**.
+
+**The extension only crawls.** Viewing, publishing, unpublishing and the network all live on the site: on the project's site the extension adds a small bridge ([`extension/bridge.js`](./extension/bridge.js)) through which the page reads the local crawl and photos and asks the crawler for things (get state, start, pause, resume, refresh names, a larger photo). New features ship with the site, without anyone updating the extension; only changes to the crawler itself need that.
 
 **What is still public.** The database password is in the page's code, so the rules live in the database functions ([`db/graphs.sql`](./db/graphs.sql)). Without accounts, anyone can publish under a username nobody has claimed yet; a real name and profile photo can be read by a network that lists that username (Instagram shows those to anyone anyway), but who follows whom stays inside its network, and nobody outside can rename anyone. Uploads stop at 2 MB per graph, 60 graphs an hour and 400 MB in total, which keeps strangers from filling the free tier.
 
@@ -98,6 +100,7 @@ The site is the extension's viewer, published from `extension/` by [`.github/wor
 | `extension/lib/groupNames.js` | keeps each friend-group name on its group across crawls |
 | `extension/lib/merge.js` | combines two graphs and tells whose circle each person is in |
 | `extension/explore.html`, `explore.js` | SQL over shared graphs (sql.js), site only |
+| `extension/bridge.js`, `extension/lib/bridge.js` | the extension's side (content script on the site only) and the page's side of reading the local crawl and talking to the crawler |
 | `extension/lib/i18n.js` | the viewer's words in Spanish (default) and English; static text in viewer.html carries `data-i18n` keys |
 | `extension/lib/store.js` | shared database: saves and reads graphs by owner and people by username through Neon's HTTP SQL endpoint |
 | `extension/lib/vault.js` | older encrypted shares: reads them so the viewer can copy them over |

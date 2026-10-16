@@ -19,6 +19,7 @@ import {
 } from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { lang, setLang, t, translateStatic } from './lib/i18n.js';
+import { ask, hasBridge, onLocalChange } from './lib/bridge.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
 
 const INSTALL_URL = 'https://sebasfavaron.github.io/IG-Social-Graph-Tool/install.html';
@@ -27,6 +28,15 @@ const $ = (id) => document.getElementById(id);
 // Inside the extension the graph comes from the crawl; as a plain web page (GitHub
 // Pages) there is no chrome.storage and the graph comes from a share link.
 const inExtension = typeof chrome !== 'undefined' && !!chrome.storage?.local;
+// On the site with the extension installed, its bridge hands over the local crawl and
+// photos, so the site does everything the extension's own page does (lib/bridge.js).
+const bridged = !inExtension && hasBridge();
+const hasLocal = inExtension || bridged;
+async function readLocal() {
+  if (inExtension) return chrome.storage.local.get(['crawl', 'thumbs']);
+  if (bridged) return ask('crawl').catch(() => ({}));
+  return {};
+}
 
 
 let shown = null; // what is on screen, for the share link
@@ -109,13 +119,14 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   $('share').hidden = !shown;
   updateExplore();
   // someone looking at a shared graph: how to make their own (the extension has it already)
-  $('invite').hidden = inExtension;
+  $('invite').hidden = hasLocal;
   $('locked').hidden = true;
   leaveHome();
   $('combine').hidden = !shown;
   pinned = null;
   viewTouched = false;
   encoded = encodedGraph;
+  fromLink = !!encodedGraph;
   if (!inExtension && !encodedGraph) {
     // drop a stale link; a stored graph's short one is rebuilt right away
     if (isStored()) syncUrl();
@@ -208,11 +219,16 @@ function updateExplore() {
     $('explore').href = `${SHARE_BASE_URL}explore.html${buildHash({ o: shown.username, m: shown.partners })}${inExtension ? identityParams() : ''}`;
 }
 let syncTimer = null;
+// The address only ever holds what is already shared: a stored graph (#o=), or the graph
+// a #g= link brought. A crawl from the extension that is not published stays out of it,
+// so copying the address shares nothing that was not meant to be.
+let fromLink = false;
 function syncUrl() {
   updateExplore();
-  if (inExtension || (!encoded && !isStored())) return;
+  if (inExtension || !(isStored() || (fromLink && encoded))) return;
   clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {
+    if (!shown) return; // nothing on screen any more (a locked link took its place)
     const hash = currentHash(encoded);
     // Another graph on screen (combined, back to one person, someone else's link) is a new
     // history entry, so Back returns to the previous graph; zoom, selection and names only
@@ -301,12 +317,16 @@ function paintWho(selected) {
 // Instagram request per person, kept for the session).
 const largePhotos = new Map(); // username -> Promise<data URL>
 function largePhoto(username) {
-  if (!inExtension || !chrome.runtime?.sendMessage) return Promise.reject(new Error('needs the extension'));
+  if (!hasLocal || (inExtension && !chrome.runtime?.sendMessage)) return Promise.reject(new Error('needs the extension'));
   if (!largePhotos.has(username)) {
-    const p = chrome.runtime.sendMessage({ type: 'profilePhoto', username }).then((res) => {
-      if (!res?.ok) throw new Error(res?.error || 'no answer');
-      return res.data;
-    });
+    const p = (
+      bridged
+        ? ask('profilePhoto', { username })
+        : chrome.runtime.sendMessage({ type: 'profilePhoto', username }).then((res) => {
+            if (!res?.ok) throw new Error(res?.error || 'no answer');
+            return res.data;
+          })
+    );
     p.catch(() => largePhotos.delete(username));
     largePhotos.set(username, p);
   }
@@ -835,6 +855,7 @@ async function openStored(owner, partners = []) {
 
 // A graph this browser cannot see (yet): who published it, the rule, and how to get in.
 async function showLocked(owner) {
+  clearTimeout(syncTimer);
   const info = await teaser(owner).catch(() => null);
   graphControl?.destroy();
   graphControl = null;
@@ -850,8 +871,8 @@ async function showLocked(owner) {
   if (info?.photo) $('locked-photo').src = info.photo;
   $('locked-title').textContent = info ? t('lockedTitle', owner, info.people) : t('lockedNotShared', owner);
   $('locked-text').textContent = t('lockedRule') + (info?.graphs ? t('lockedCount', info.graphs) : '');
-  $('locked-how').textContent = me() ? t('lockedFar', owner) : t(inExtension ? 'lockedHowExtension' : 'lockedHowSite');
-  $('locked-cta').hidden = inExtension || !!me();
+  $('locked-how').textContent = me() ? t('lockedFar', owner) : t(hasLocal ? 'lockedHowExtension' : 'lockedHowSite');
+  $('locked-cta').hidden = hasLocal || !!me();
   $('locked-cta').href = INSTALL_URL;
   $('locked').hidden = false;
 }
@@ -1396,33 +1417,34 @@ document.addEventListener('keydown', (e) => {
 });
 
 $('invite').href = INSTALL_URL;
-$('invite').hidden = inExtension; // the site's corner: map your own
+$('invite').hidden = hasLocal; // the site's corner: map your own (unless the extension is here)
 renderEmptyText();
-if (inExtension) {
-  const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
-  profiles = ownProfiles = crawl?.profiles || {};
-  photos = ownPhotos = photosFromThumbs(thumbs);
+const local = hasLocal ? await readLocal() : {};
+if (hasLocal) {
+  profiles = ownProfiles = local.crawl?.profiles || {};
+  photos = ownPhotos = photosFromThumbs(local.thumbs);
   // photos keep arriving while the crawl runs
-  chrome.storage.onChanged.addListener((changes) => {
-    if (!changes.thumbs) return;
-    const fresh = photosFromThumbs(changes.thumbs.newValue);
+  const freshPhotos = (thumbs) => {
+    const fresh = photosFromThumbs(thumbs);
     if (photos === ownPhotos) photos = fresh;
     ownPhotos = fresh;
     if (photos !== fresh) return; // looking at someone else's full share
     graphControl?.setPhotos(photos);
     const selected = graphControl?.selected();
     if (selected) paintWho(selected);
-  });
+  };
+  if (inExtension) chrome.storage.onChanged.addListener((changes) => changes.thumbs && freshPhotos(changes.thumbs.newValue));
+  else onLocalChange(() => ask('crawl').then((fresh) => freshPhotos(fresh.thumbs)).catch(() => {}));
 }
 // a link from the extension: this browser is that publisher from now on
 const cleaned = takeIdentity(location.hash);
 if (cleaned !== null) history.replaceState(null, '', location.pathname + location.search + cleaned);
 if (!(await openShareHash())) {
-  const { crawl } = inExtension ? await chrome.storage.local.get('crawl') : {};
-  if (crawl) await show(toGraph(crawl));
+  // your own crawl first, from the extension (on the site, through its bridge)
+  if (local.crawl) await show(toGraph(local.crawl));
   else {
-    // the extension still says how to get a graph of your own; the site shows only the list
-    $('empty').hidden = !inExtension;
+    // with the extension: how to get a graph of your own; without it, only the list
+    $('empty').hidden = !hasLocal;
     openHome();
   }
 }

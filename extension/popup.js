@@ -1,7 +1,4 @@
-import { toGraph } from './lib/crawler.js';
-import { SHARE_BASE_URL, buildHash, encodeGraph } from './lib/share.js';
-import { photosFromThumbs } from './lib/vault.js';
-import { identityParams, me, saveGraph } from './lib/store.js';
+import { SHARE_BASE_URL } from './lib/share.js';
 import { lang, langButton, t, translateStatic } from './lib/i18n.js';
 import { formatDuration } from './lib/format.js';
 
@@ -56,7 +53,7 @@ function render(s) {
   // popup sends no count at all, so the button stays hidden for it
   $('profiles').hidden = !has || s.status !== 'done' || s.profiles === undefined;
   $('profiles').textContent = s?.profiles ? t('p.refreshProfiles') : t('p.getProfiles');
-  $('view').disabled = $('share').disabled = !has || s.links === 0;
+  $('view').disabled = !has || s.links === 0;
   $('error').hidden = !s?.error || s.status === 'running';
   $('error').textContent = s?.error || '';
   $('error').style.color = s?.status === 'cooldown' ? 'var(--muted)' : '';
@@ -113,60 +110,10 @@ $('guide').onclick = (e) => {
   e.preventDefault();
   chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
 };
-$('view').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
-// Once published, the site can show the network too: the link tells it who this is, once.
-function updateNetworkLink() {
-  $('network-row').hidden = !me();
-}
-$('network').onclick = (e) => {
-  e.preventDefault();
-  chrome.tabs.create({ url: `${SHARE_BASE_URL}#${identityParams().slice(1)}` });
-};
-// Same kind of link the viewer's button makes: the crawl and its people's names and
-// photos go to the shared storage (store.js), and the link is just the username,
-// opening on the public page (loners included; the viewer hides them).
-// Publishing makes the crawl public to anyone, so the first click shows what goes up and
-// who can see it; the upload waits for the second.
-$('share').onclick = () => {
-  $('publish').hidden = false;
-  $('publish-cancel').focus();
-};
-$('publish-cancel').onclick = () => ($('publish').hidden = true);
-$('publish-go').onclick = async () => {
-  $('publish').hidden = true;
-  let url;
-  try {
-    $('share').disabled = true;
-    $('share').textContent = t('uploading');
-    const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
-    const graph = toGraph(crawl);
-    const owner = graph.username || graph.metadata?.loggedUsername;
-    if (!owner) throw new Error(t('p.noOwner'));
-    await saveGraph({
-      owner,
-      g: await encodeGraph(graph),
-      ids: new Set(graph.nodes.map((n) => n.id)),
-      profiles: crawl.profiles,
-      photos: photosFromThumbs(thumbs),
-    });
-    url = SHARE_BASE_URL + buildHash({ o: owner });
-    updateNetworkLink();
-  } catch (err) {
-    $('error').hidden = false;
-    $('error').textContent = t('couldNotShare', err.message);
-    $('share').textContent = t('shareWide');
-    return;
-  } finally {
-    $('share').disabled = false;
-  }
-  try {
-    await navigator.clipboard.writeText(url);
-    $('share').textContent = t('linkCopied');
-  } catch (_) {
-    prompt(t('copyThisLink'), url);
-  }
-  setTimeout(() => ($('share').textContent = t('shareWide')), 2500);
-};
+// Viewing, publishing and the network all live on the site, which reads this crawl
+// through the extension's bridge (bridge.js): new features ship with the site, and the
+// extension only needs updating when the crawler itself changes.
+$('view').onclick = () => chrome.tabs.create({ url: SHARE_BASE_URL });
 
 chrome.storage.onChanged.addListener(() => act(() => send('getState')));
 chrome.cookies.onChanged.addListener(({ cookie }) => {
@@ -175,7 +122,6 @@ chrome.cookies.onChanged.addListener(({ cookie }) => {
 // Spanish by default; the EN/ES button switches it, shared with the extension's viewer
 document.documentElement.lang = lang;
 translateStatic();
-updateNetworkLink();
 langButton($('lang'), () => {
   translateStatic();
   render(last);

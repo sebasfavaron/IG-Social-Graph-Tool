@@ -11,19 +11,9 @@
         --accent: #1b1b1b;
         --accent-fg: #fff;
         --err: #c62828;
-        --warn-bg: #fff4e5;
-        --warn-line: #e8a33d;
-        --warn-fg: #6b3d00;
-        --warn-button: #b45309;
-        --warn-button-fg: #ffffff;
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --warn-bg: #2b1d0a;
-          --warn-line: #9a6514;
-          --warn-fg: #f5c779;
-          --warn-button: #e08a1e;
-          --warn-button-fg: #111111;
           --bg: #1c1c1c;
           --fg: #eee;
           --muted: #9a9a9a;
@@ -113,45 +103,6 @@
         color: var(--err);
         margin: 8px 0;
       }
-      /* publishing makes the graph public: said in warning colours, asked before doing it */
-      #share {
-        border-color: var(--warn-line);
-        background: var(--warn-bg);
-        color: var(--warn-fg);
-      }
-      #publish {
-        margin-top: 10px;
-        padding: 10px 12px;
-        border: 1px solid var(--warn-line);
-        border-radius: 8px;
-        background: var(--warn-bg);
-        color: var(--warn-fg);
-      }
-      #publish[hidden] {
-        display: none;
-      }
-      #publish strong {
-        display: block;
-        margin-bottom: 4px;
-      }
-      #publish ul {
-        margin: 0 0 8px;
-        padding-left: 16px;
-      }
-      #publish li + li {
-        margin-top: 3px;
-      }
-      #publish button {
-        border-color: var(--warn-line);
-        background: transparent;
-        color: inherit;
-      }
-      #publish button.warn {
-        background: var(--warn-button);
-        border-color: var(--warn-button);
-        color: var(--warn-button-fg);
-        font-weight: 600;
-      }
       .row {
         display: flex;
         gap: 6px;
@@ -238,22 +189,7 @@
       <span data-i18n="p.intro">Tus datos quedan en este navegador hasta que los compartís. </span><a id="guide" href="welcome.html" data-i18n="p.guide">Guía paso a paso</a>
     </p>
     <div class="row">
-      <button id="view" data-i18n="p.view">Ver grafo</button>
-      <button id="share" data-i18n="shareWide" data-i18n-title="shareTitle">Publicar y copiar link</button>
-    </div>
-    <p id="network-row" hidden><a id="network" href="#" data-i18n="p.network">Ver la red en la web ↗</a></p>
-    <div id="publish" role="alertdialog" aria-labelledby="publish-title" hidden>
-      <strong id="publish-title">⚠ <span data-i18n="publishTitle">Esto es público</span></strong>
-      <ul>
-        <li data-i18n="publishWhat"></li>
-        <li data-i18n="publishWho"></li>
-        <li data-i18n="publishReplace"></li>
-        <li data-i18n="publishOnlyHere"></li>
-      </ul>
-      <div class="row">
-        <button id="publish-cancel" data-i18n="cancel">Cancelar</button>
-        <button id="publish-go" class="warn" data-i18n="publishGo">Publicar y copiar link</button>
-      </div>
+      <button id="view" class="primary" data-i18n="p.view">Ver y publicar en la web ↗</button>
     </div>
 
     <details>
