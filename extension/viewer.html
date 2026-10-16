@@ -932,6 +932,10 @@
         margin: 12px 0 0;
         font-size: 13px;
       }
+      /* the front page covers the whole screen; the bar's buttons stay on top of it */
+      body.hero-on header {
+        z-index: 2;
+      }
       /* the corner button says the same as the big one */
       body.hero-on #invite {
         display: none;
