@@ -186,6 +186,15 @@
         line-height: 1;
       }
 
+      /* combined: each owner's name links to their graph alone */
+      #title a {
+        color: inherit;
+        text-decoration: underline dotted;
+        text-underline-offset: 3px;
+      }
+      #title a:hover {
+        color: var(--accent);
+      }
       /* ---- search ---- */
       .search {
         position: relative;
@@ -788,7 +797,6 @@
       <button id="combine" hidden data-i18n-title="combineTitle" title="Pegá el link de un amigo para ver sus círculos juntos en un grafo">
         <span class="wide-only" data-i18n="combineWide">Combinar con un amigo…</span><span class="narrow-only" data-i18n="combineNarrow">Combinar</span>
       </button>
-      <button id="uncombine" hidden data-i18n-title="uncombineTitle" title="Volver al grafo de una sola persona"><span class="label"></span></button>
       <button id="theme" aria-label="Cambiar a tema oscuro" data-i18n-title="switchTheme" title="Cambiar tema">☾</button>
       <button id="lang" aria-label="Switch to English" title="Switch to English">EN</button>
       <!-- last: it appears once the graph is stored, so nothing else moves -->

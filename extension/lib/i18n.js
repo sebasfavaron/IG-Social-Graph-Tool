@@ -18,7 +18,6 @@ const STRINGS = {
     combineTitle: 'Pegá el link de un amigo para ver sus círculos juntos en un grafo',
     combineWide: 'Combinar con un amigo…',
     combineNarrow: 'Combinar',
-    uncombineTitle: 'Volver al grafo de una sola persona',
     exploreText: 'Explorar datos',
     exploreTitle: 'Hacerle preguntas a estos grafos',
     hint: 'Hacé clic en alguien para ver quién sigue a quién · Esc limpia',
@@ -52,7 +51,7 @@ const STRINGS = {
       `Grafo de seguidores de ${n} personas` +
       (groups > 1 ? ` en ${groups} grupos de amigos` : '') +
       '. Usá la búsqueda para elegir a alguien; sus conexiones aparecen en un panel.',
-    onlyOwner: (u) => `Solo @${u}`,
+    onlyGraphOf: (u) => `Ver solo el grafo de @${u}`,
     private: 'privada',
     verified: 'verificada',
     showPhotoOf: (u) => `Ver la foto de @${u} más grande`,
@@ -109,7 +108,6 @@ const STRINGS = {
     combineTitle: "Paste a friend's share link to see your circles together in one graph",
     combineWide: 'Combine with a friend…',
     combineNarrow: 'Combine',
-    uncombineTitle: "Go back to one person's graph",
     exploreText: 'Explore data',
     exploreTitle: 'Ask these graphs questions',
     hint: 'Click someone to see who follows whom · Esc clears',
@@ -143,7 +141,7 @@ const STRINGS = {
       `Follower graph of ${n} people` +
       (groups > 1 ? ` in ${groups} friend groups` : '') +
       '. Use search to pick someone; their connections are listed in a panel.',
-    onlyOwner: (u) => `@${u} only`,
+    onlyGraphOf: (u) => `See only @${u}'s graph`,
     private: 'private',
     verified: 'verified',
     showPhotoOf: (u) => `Show @${u}'s photo larger`,

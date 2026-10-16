@@ -102,7 +102,6 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   // someone looking at a shared graph: how to make their own (the extension has it already)
   $('invite').hidden = inExtension || !shown;
   $('combine').hidden = !shown || !username || owners.length >= MAX_OWNERS;
-  $('uncombine').hidden = !shown || !combined;
   pinned = null;
   viewTouched = false;
   encoded = encodedGraph;
@@ -133,7 +132,25 @@ function renderHeading() {
   const [username] = owners;
   const names = owners.map((o) => `@${o}`).join(' + ');
   document.title = combined ? names : username ? t('circleOf', username) : 'IG Social Graph';
-  $('title').textContent = combined ? names : username ? `@${username}` : 'IG Social Graph';
+  // combined: each name links to that person's graph alone, in this tab
+  if (combined) {
+    $('title').replaceChildren(
+      ...owners.flatMap((o, i) => {
+        const link = Object.assign(document.createElement('a'), {
+          href: buildHash({ o, n: null }),
+          textContent: `@${o}`,
+          title: t('onlyGraphOf', o),
+        });
+        link.onclick = (e) => {
+          e.preventDefault();
+          showOnly(o);
+        };
+        return i ? [' + ', link] : [link];
+      })
+    );
+  } else {
+    $('title').textContent = username ? `@${username}` : 'IG Social Graph';
+  }
   const extra = document.createElement('span');
   extra.className = 'wide-only';
   extra.textContent = loners ? t('loners', loners) : '';
@@ -144,7 +161,6 @@ function renderHeading() {
     partial ? t('partial') : ''
   );
   $('graph').setAttribute('aria-label', t('graphLabel', people, combined ? 0 : groups.sizes.length));
-  $('uncombine').querySelector('.label').textContent = t('onlyOwner', username);
 }
 
 // a click on the graph selected or cleared someone
@@ -928,11 +944,15 @@ $('combine-form').onsubmit = async (e) => {
     $('combine-go').disabled = false;
   }
 };
-$('uncombine').onclick = () => {
-  const owner = shown?.username;
-  if (!parts.has(owner)) return;
-  show(parts.get(owner), { stored: storedOwners.has(owner) ? [owner] : [] }).then(syncUrl);
-};
+// One person's graph out of the combined one on screen: their own crawl when it is here
+// (the extension's, unsaved changes and all), otherwise from the shared storage.
+function showOnly(owner) {
+  if (parts.has(owner)) {
+    show(parts.get(owner), { stored: storedOwners.has(owner) ? [owner] : [] }).then(syncUrl);
+  } else {
+    location.hash = buildHash({ o: owner });
+  }
+}
 
 // Share: the graph on screen and how it is being looked at travel inside the link (after
 // "#", never sent to a server). From the extension the link points at the public page.
