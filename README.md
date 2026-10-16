@@ -2,7 +2,7 @@
 
 Draws who-follows-whom among the people who follow you on Instagram, as an interactive graph: your friend groups come out as coloured clusters, and clicking anyone shows who follows them, whom they follow and who follows each other.
 
-**See it first:** open [sebasfavaron.github.io/IG-Social-Graph-Tool](https://sebasfavaron.github.io/IG-Social-Graph-Tool/) and press **Try an example** (20 made-up people in three groups).
+**See it first:** open [sebasfavaron.github.io/IG-Social-Graph-Tool](https://sebasfavaron.github.io/IG-Social-Graph-Tool/): it lists the graphs friends have shared; tick one or a few to see them.
 
 ### Map your own followers (Chrome extension)
 
@@ -43,7 +43,7 @@ The database keeps one graph per person and one row per Instagram account. Someo
 
 ### Combine two people's graphs
 
-**Combine with friends…** lists everyone who has shared a graph, with their photo, how many people their graph holds and when they shared it. Tick up to five and they are drawn as one graph; nothing new is uploaded. The same list opens from the empty screen of the site, and a share link can still be pasted under it. The key switches from friend groups to circles: one colour for the people only each of you knows, and one for the people in more than one circle (with two people, "in both"). Click a circle to keep it highlighted. The combined link lists the usernames (`#o=you&m=friend,another`), and each name in the title opens that person's graph alone.
+**Combine with friends…** lists everyone who has shared a graph, with their photo, how many people their graph holds and when they shared it. Tick up to five and they are drawn as one graph; nothing new is uploaded. The same list is the site's home page, and a share link can still be pasted under it. The key switches from friend groups to circles: one colour for the people only each of you knows, and one for the people in more than one circle (with two people, "in both"). Click a circle to keep it highlighted. The combined link lists the usernames (`#o=you&m=friend,another`), and each name in the title opens that person's graph alone.
 
 ### Explore the data
 

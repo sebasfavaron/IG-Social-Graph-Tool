@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { friendGroups } from '../extension/lib/groups.js';
-import { EXAMPLE_GRAPH } from '../extension/lib/example.js';
+import { EXAMPLE_GRAPH } from './exampleGraph.js';
 
 // three dense groups of 8, a few links between them, and "me" following everyone
 function planted() {

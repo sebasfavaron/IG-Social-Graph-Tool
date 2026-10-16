@@ -1,4 +1,4 @@
-// Made-up graph for the "Try an example" button: three friend groups (school, work,
+// Made-up graph the tests use (it was the site's "Try an example"): three friend groups (school, work,
 // family) big enough to get colours, people who bridge them, a fan nobody follows back,
 // and an account that only follows "you" (hidden as a loner). Links read "source follows
 // target".

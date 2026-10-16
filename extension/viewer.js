@@ -1,6 +1,5 @@
 import { toGraph } from './lib/crawler.js';
 import { drawGraph } from './lib/graphCanvas.js';
-import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
 import { friendGroups } from './lib/groups.js';
 import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
@@ -43,8 +42,6 @@ const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 // Resolves once the layout is in, so callers can select and move the view.
 async function show(graph, { encodedGraph = null, crawls = null, stored = [] } = {}) {
   const username = graph.username || graph.metadata?.loggedUsername;
-  // the example is nobody's: it never goes to the storage, and shares as a #g= link
-  const example = graph.metadata?.generatedBy === 'example';
   // combined: the other owners, drawn by circle instead of friend group
   const partners = (graph.partners || []).filter((p) => graph.nodes.some((n) => n.id === p));
   const owners = [username, ...partners];
@@ -53,13 +50,13 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
     ? new Map(crawls.map((c) => [c.username, c]))
     : combined
       ? new Map(owners.map((o) => [o, ownGraph(graph, o)])) // a merged graph from an old link
-      : new Map(username && !example ? [[username, graph]] : []);
+      : new Map(username ? [[username, graph]] : []);
   storedOwners = new Set(stored);
   peopleLoad++; // names and photos still coming for the previous graph stop landing
   const total = graph.nodes.length;
   const pruned = pruneLoneNodes(graph);
   $('empty').hidden = pruned.nodes.length > 0;
-  // Same order whatever the source (crawl, link, example), so the layout comes out the same
+  // Same order whatever the source (crawl or link), so the layout comes out the same
   // and a view saved in a link lands on the same people.
   // Loners are drawn too but stay hidden until a selection reaches them, so a group in the
   // panel shows everyone its count includes.
@@ -100,7 +97,8 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   $('share').hidden = !shown;
   updateExplore();
   // someone looking at a shared graph: how to make their own (the extension has it already)
-  $('invite').hidden = inExtension || !shown;
+  $('invite').hidden = inExtension;
+  leaveHome();
   $('combine').hidden = !shown;
   pinned = null;
   viewTouched = false;
@@ -206,7 +204,8 @@ function syncUrl() {
     // before this page.
     const before = graphOf(parseHash(location.hash));
     const url = location.pathname + location.search + hash;
-    if (before && before !== graphOf(parseHash(hash))) history.pushState(null, '', url);
+    // (from the bare address too: that is home, and Back should land there)
+    if (before !== graphOf(parseHash(hash))) history.pushState(null, '', url);
     else history.replaceState(null, '', url);
   }, 250);
 }
@@ -764,15 +763,9 @@ function updateLangButton() {
   $('lang').title = t('langLabel');
 }
 // the empty screen: run a crawl (extension), or get a link from someone who did (site)
+// only the extension shows it: the site's home is the list of shared graphs
 function renderEmptyText() {
-  if (inExtension) return void ($('empty-text').textContent = t('emptyExtension'));
-  const link = Object.assign(document.createElement('a'), {
-    href: INSTALL_URL,
-    target: '_blank',
-    rel: 'noopener',
-    textContent: t('emptySiteLink'),
-  });
-  $('empty-text').replaceChildren(t('emptySiteBefore'), link, t('emptySiteAfter'));
+  $('empty-text').textContent = t('emptyExtension');
 }
 function applyLanguage() {
   document.documentElement.lang = lang;
@@ -801,7 +794,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-$('example').onclick = () => show(EXAMPLE_GRAPH);
 
 // ---- shared storage (store.js): a crawl per owner, people once ----------------------
 // -> { graph, crawls } for #o=owner (and m=partners: every crawl, merged). Names and
@@ -898,13 +890,30 @@ async function copyOver(full, partners, ref) {
 const dialog = $('combine-dialog');
 let chosen = []; // owners ticked, in order; the first is the one the link starts with
 let shared = null; // the list, fetched once per page
+// Home (nothing on screen): the same list, open as a side panel to dive into a graph.
+function openHome() {
+  document.body.classList.add('home');
+  placeHome();
+  openPicker();
+}
+// the side panel starts below the header, whose height changes with the screen
+function placeHome() {
+  document.documentElement.style.setProperty('--below-header', `${document.querySelector('header').offsetHeight + 20}px`);
+}
+window.addEventListener('resize', placeHome);
+function leaveHome() {
+  if (!document.body.classList.contains('home')) return;
+  document.body.classList.remove('home');
+  $('combine-dialog').close();
+}
 function openPicker() {
   $('combine-error').hidden = true;
   $('combine-link').value = '';
   $('picker-filter').value = '';
   chosen = [...parts.keys()];
   renderPicker();
-  dialog.showModal();
+  if (document.body.classList.contains('home')) dialog.show();
+  else dialog.showModal();
   if (!shared) {
     $('picker-status').textContent = t('pickerLoading');
     listGraphs()
@@ -917,8 +926,9 @@ function openPicker() {
   }
 }
 $('combine').onclick = openPicker;
-$('empty-picker').onclick = openPicker;
 $('combine-cancel').onclick = () => dialog.close();
+// Esc closes the menu, but home keeps it: it is the page
+dialog.addEventListener('cancel', (e) => document.body.classList.contains('home') && e.preventDefault());
 
 const ago = (date) => {
   const minutes = (date - Date.now()) / 60_000;
@@ -1044,7 +1054,7 @@ $('combine-form').onsubmit = async (e) => {
     } else {
       friend = await decodeGraph(state.g);
     }
-    // each crawl on screen plus theirs (the example has no crawl of its own)
+    // each crawl on screen plus theirs
     const crawls = [...(parts.size ? parts.values() : [shown]), friend];
     const merged = mergeGraphs(...crawls);
     const stored = [...storedOwners].filter((o) => parts.has(o));
@@ -1139,6 +1149,8 @@ async function openShareHash() {
 // Both can fire for one step, so a step is handled once.
 let navigating = false;
 function onNavigate() {
+  // back to the site's bare address: its home, the list, as on a first visit
+  if (!location.hash && !inExtension) return location.reload();
   if (navigating) return;
   navigating = true;
   setTimeout(() => (navigating = false));
@@ -1320,6 +1332,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 $('invite').href = INSTALL_URL;
+$('invite').hidden = inExtension; // the site's corner: map your own
 renderEmptyText();
 if (inExtension) {
   const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
@@ -1340,5 +1353,9 @@ if (inExtension) {
 if (!(await openShareHash())) {
   const { crawl } = inExtension ? await chrome.storage.local.get('crawl') : {};
   if (crawl) await show(toGraph(crawl));
-  else $('empty').hidden = false;
+  else {
+    // the extension still says how to get a graph of your own; the site shows only the list
+    $('empty').hidden = !inExtension;
+    openHome();
+  }
 }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeGraph, decodeGraph } from '../extension/lib/share.js';
-import { EXAMPLE_GRAPH } from '../extension/lib/example.js';
+import { EXAMPLE_GRAPH } from './exampleGraph.js';
 
 const edges = (g) => g.links.map((l) => `${l.source}>${l.target}`).sort();
 
