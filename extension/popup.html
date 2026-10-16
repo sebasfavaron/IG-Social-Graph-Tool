@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="es">
   <head>
     <meta charset="utf-8" />
     <style>
@@ -31,8 +31,16 @@
         color: var(--fg);
       }
       h1 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         font-size: 15px;
         margin: 0 0 10px;
+      }
+      #lang {
+        padding: 1px 7px;
+        font-size: 11px;
+        font-weight: 600;
       }
       .muted {
         color: var(--muted);
@@ -120,49 +128,49 @@
     </style>
   </head>
   <body>
-    <h1>IG Social Graph</h1>
-    <div id="status" class="muted">Loading…</div>
+    <h1>IG Social Graph <button id="lang">EN</button></h1>
+    <div id="status" class="muted" data-i18n="p.loading">Cargando…</div>
     <div class="bar"><div id="bar"></div></div>
     <dl id="stats" hidden>
-      <dt>Account</dt>
+      <dt data-i18n="p.account">Cuenta</dt>
       <dd id="viewer"></dd>
-      <dt>Followers checked</dt>
+      <dt data-i18n="p.checked">Seguidores revisados</dt>
       <dd id="checked"></dd>
-      <dt>Connections</dt>
+      <dt data-i18n="p.connections">Conexiones</dt>
       <dd id="links"></dd>
-      <dt>Requests</dt>
+      <dt data-i18n="p.requests">Pedidos</dt>
       <dd id="requests"></dd>
-      <dt>Time left</dt>
+      <dt data-i18n="p.timeLeft">Tiempo restante</dt>
       <dd id="eta"></dd>
     </dl>
     <div id="error" class="error" hidden></div>
 
     <div class="row">
-      <button id="login" class="primary" hidden>Open Instagram</button>
-      <button id="start" class="primary">Start</button>
-      <button id="resume" class="primary" hidden>Resume</button>
-      <button id="pause" hidden>Pause</button>
-      <button id="profiles" hidden title="Lists your followers again (about one request per 50) to pick up real names and profile photos">
-        Get names &amp; photos
+      <button id="login" class="primary" hidden data-i18n="p.openInstagram">Abrir Instagram</button>
+      <button id="start" class="primary">Empezar</button>
+      <button id="resume" class="primary" hidden data-i18n="p.resume">Seguir</button>
+      <button id="pause" hidden data-i18n="p.pause">Pausar</button>
+      <button id="profiles" hidden data-i18n-title="p.profilesTitle" title="Vuelve a listar tus seguidores (más o menos un pedido cada 50) para traer nombres reales y fotos de perfil">
+        Traer nombres y fotos
       </button>
     </div>
     <p id="intro" class="muted" hidden>
-      Your data stays in this browser until you share it. <a id="guide" href="welcome.html">Step-by-step guide</a>
+      <span data-i18n="p.intro">Tus datos quedan en este navegador hasta que los compartís. </span><a id="guide" href="welcome.html" data-i18n="p.guide">Guía paso a paso</a>
     </p>
     <div class="row">
-      <button id="view">View graph</button>
-      <button id="share">Copy share link</button>
+      <button id="view" data-i18n="p.view">Ver grafo</button>
+      <button id="share" data-i18n="p.share">Copiar link</button>
     </div>
 
     <details>
-      <summary class="muted">Settings</summary>
-      <label>Seconds between requests <input id="delay" type="number" min="2" max="120" value="6" /></label>
-      <label>Followers to check (0 = all) <input id="max" type="number" min="0" value="0" /></label>
-      <p class="muted">
-        Slower is safer. Instagram limits how fast an account can browse; if it pushes back, the crawl
-        waits and resumes on its own. Keep one instagram.com tab open (one is opened for you).
+      <summary class="muted" data-i18n="p.settings">Ajustes</summary>
+      <label><span data-i18n="p.delay">Segundos entre pedidos </span><input id="delay" type="number" min="2" max="120" value="6" /></label>
+      <label><span data-i18n="p.max">Seguidores a revisar (0 = todos) </span><input id="max" type="number" min="0" value="0" /></label>
+      <p class="muted" data-i18n="p.settingsNote">
+        Más lento es más seguro. Instagram limita qué tan rápido navega una cuenta; si frena, el crawl espera y
+        sigue solo. Dejá una pestaña de instagram.com abierta (se abre una por vos).
       </p>
-      <div class="row"><button id="reset">Delete collected data</button></div>
+      <div class="row"><button id="reset" data-i18n="p.reset">Borrar los datos juntados</button></div>
     </details>
 
     <script type="module" src="popup.js"></script>

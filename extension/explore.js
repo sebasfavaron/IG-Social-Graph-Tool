@@ -1,6 +1,7 @@
 import { decodeGraph, parseHash, buildHash } from './lib/share.js';
 import { loadGraph, loadPeople } from './lib/store.js';
 import { mergeGraphs, MAX_OWNERS } from './lib/merge.js';
+import { lang, langButton, t, translateStatic } from './lib/i18n.js';
 
 // SQL over the shared graphs, in the page: the graphs (and names, no photos) come from the
 // shared storage like in the viewer, and go into an in-memory SQLite (sql.js, ~290 KB
@@ -12,11 +13,11 @@ const ROW_LIMIT = 1000; // rows drawn; the count says how many there were
 // The graph page: index.html on the site, viewer.html when serving extension/ locally.
 const viewerUrl = new URL(location.hostname.endsWith('github.io') ? './' : 'viewer.html', location.href);
 
-// Example questions. {0} is the first owner; {a} and {b} the last two (with two owners,
+// Example questions (title: a key in i18n.js). {0} is the first owner; {a} and {b} the last two (with two owners,
 // {0} and {1}). needs: how many owners the question makes sense with.
 const EXAMPLES = [
   {
-    title: 'Most followed people in these graphs',
+    title: 'x.q.mostFollowed',
     needs: 1,
     sql: `select f.target as username, p.name, count(*) as followers_here
 from follows f left join people p on p.username = f.target
@@ -25,7 +26,7 @@ order by followers_here desc
 limit 30;`,
   },
   {
-    title: 'Who {0} follows that does not follow back',
+    title: 'x.q.noFollowBack',
     needs: 1,
     sql: `select f.target as username, p.name
 from follows f left join people p on p.username = f.target
@@ -34,7 +35,7 @@ where f.source = '{0}'
 order by username;`,
   },
   {
-    title: 'Most connected people inside each circle',
+    title: 'x.q.mostConnected',
     needs: 1,
     sql: `-- follows each person has with others in the same circle, top 5 per circle
 with inside as (
@@ -51,7 +52,7 @@ where rank <= 5
 order by owner, links desc;`,
   },
   {
-    title: 'People in more than one circle',
+    title: 'x.q.moreThanOne',
     needs: 2,
     sql: `select c.username, p.name, group_concat(c.owner, ', ') as circles, count(*) as how_many
 from circles c left join people p on p.username = c.username
@@ -61,14 +62,14 @@ having count(*) > 1
 order by how_many desc, c.username;`,
   },
   {
-    title: 'Do {a} and {b} follow each other?',
+    title: 'x.q.eachOther',
     needs: 2,
     sql: `select source, target from follows
 where (source = '{a}' and target = '{b}')
    or (source = '{b}' and target = '{a}');`,
   },
   {
-    title: "In both {a}'s and {b}'s circles, and whether {0} knows them",
+    title: 'x.q.inBoth',
     needs: 3,
     sql: `select x.username, p.name,
   exists (select 1 from circles c where c.owner = '{0}' and c.username = x.username) as known_by_{0x}
@@ -79,7 +80,7 @@ where x.owner = '{a}' and x.username not in (select username from owners)
 order by known_by_{0x}, x.username;`,
   },
   {
-    title: 'Paths from {a} to {b} that avoid {0} (up to 3 steps)',
+    title: 'x.q.paths',
     needs: 3,
     sql: `-- every route of up to 3 follows (either direction), never through {0}
 with recursive reach(node, steps, path) as (
@@ -100,6 +101,7 @@ limit 50;`,
 let SQL = null; // the sql.js module
 let db = null;
 let owners = [];
+let loaded = null; // [people, follows, ms] of the last load, for the status line
 
 // SQLite loads alongside the graphs instead of before them: the page and the data come
 // first, the engine is only needed once both are in.
@@ -107,7 +109,7 @@ const SQL_JS = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/';
 const sqlReady = new Promise((resolve, reject) => {
   const script = Object.assign(document.createElement('script'), { src: `${SQL_JS}sql-wasm.js`, async: true });
   script.onload = resolve;
-  script.onerror = () => reject(new Error('SQLite did not download'));
+  script.onerror = () => reject(new Error(t('x.sqlFailed')));
   document.head.append(script);
 })
   .then(() => window.initSqlJs({ locateFile: (file) => SQL_JS + file }))
@@ -125,7 +127,7 @@ async function load(list) {
   $('back').href = new URL(buildHash({ o: owners[0], m: owners.slice(1) }), viewerUrl).href;
   history.replaceState(null, '', location.pathname + buildHash({ o: owners[0], m: owners.slice(1) }));
   $('load').disabled = $('run').disabled = true;
-  $('status').textContent = 'Loading…';
+  $('status').textContent = t('x.loading');
   const started = performance.now();
   try {
     const crawls = await Promise.all(
@@ -141,12 +143,13 @@ async function load(list) {
     db?.close();
     db = new SQL.Database();
     fill(db, graph, profiles);
-    $('status').textContent = `${ids.length} people · ${graph.links.length} follows · ${Math.round(performance.now() - started)} ms`;
+    loaded = [ids.length, graph.links.length, Math.round(performance.now() - started)];
+    $('status').textContent = t('x.loaded', ...loaded);
     renderExamples();
     $('run').disabled = false;
   } catch (err) {
     $('status').textContent = '';
-    showError(`Could not load: ${err.message}`);
+    showError(t('x.couldNotLoad', err.message));
   } finally {
     $('load').disabled = false;
   }
@@ -203,7 +206,7 @@ function fillIn(text) {
 const OWN = 'own';
 function renderExamples() {
   const usable = EXAMPLES.filter((e) => owners.length >= e.needs);
-  $('examples').replaceChildren(...usable.map((e) => new Option(fillIn(e.title), EXAMPLES.indexOf(e))));
+  $('examples').replaceChildren(...usable.map((e) => new Option(fillIn(t(e.title)), EXAMPLES.indexOf(e))));
   pick([5, 3, 0].map((i) => EXAMPLES[i]).find((e) => usable.includes(e)));
 }
 
@@ -220,7 +223,7 @@ $('examples').onchange = () => {
   if (example) pick(example);
 };
 $('sql').oninput = () => {
-  if (!$('examples').querySelector(`option[value="${OWN}"]`)) $('examples').append(new Option('Your own SQL', OWN));
+  if (!$('examples').querySelector(`option[value="${OWN}"]`)) $('examples').append(new Option(t('x.ownSql'), OWN));
   $('examples').value = OWN;
 };
 
@@ -246,13 +249,13 @@ function run() {
   const last = results[results.length - 1];
   if (!last) {
     $('results').hidden = true;
-    $('summary').textContent = `No rows · ${ms} ms`;
+    $('summary').textContent = `${t('x.noRows')} · ${ms} ms`;
     return;
   }
   const { columns, values } = last;
   $('summary').textContent =
-    `${values.length} ${values.length === 1 ? 'row' : 'rows'}` +
-    (values.length > ROW_LIMIT ? ` (first ${ROW_LIMIT} shown)` : '') +
+    t('x.rows', values.length) +
+    (values.length > ROW_LIMIT ? t('x.firstShown', ROW_LIMIT) : '') +
     ` · ${ms} ms`;
   renderTable(columns, values.slice(0, ROW_LIMIT));
 }
@@ -278,10 +281,10 @@ function renderTable(columns, rows) {
             href: `https://www.instagram.com/${encodeURIComponent(value)}/`,
             target: '_blank',
             rel: 'noopener',
-            title: `Open @${value} on Instagram`,
+            title: t('x.openIg', value),
             innerHTML: IG_ICON,
           });
-          ig.setAttribute('aria-label', `Open @${value} on Instagram (new tab)`);
+          ig.setAttribute('aria-label', t('openOnInstagramOf', value));
           td.append(Object.assign(document.createElement('a'), { href: new URL(hash, viewerUrl).href, textContent: value }), ig);
         } else {
           td.textContent = value ?? '';
@@ -310,11 +313,26 @@ $('load-form').onsubmit = (e) => {
     .map((o) => o.replace(/^@/, ''))
     .filter(Boolean);
   if (!list.length) return;
-  if (list.length > MAX_OWNERS) return showError(`At most ${MAX_OWNERS} graphs at once.`);
+  if (list.length > MAX_OWNERS) return showError(t('x.tooMany', MAX_OWNERS));
   showError('');
   load([...new Set(list)]);
 };
 
 const first = ownersFromHash();
 if (first.length) load(first);
-else $('status').textContent = 'Type one or more usernames whose graphs were shared.';
+else $('status').textContent = t('x.typeOwners');
+
+// Spanish by default; the EN/ES button switches it (same choice as the graph page)
+document.documentElement.lang = lang;
+translateStatic();
+document.title = t('x.title');
+langButton($('lang'), () => {
+  translateStatic();
+  document.title = t('x.title');
+  if (loaded) $('status').textContent = t('x.loaded', ...loaded);
+  else if (!owners.length) $('status').textContent = t('x.typeOwners');
+  for (const option of $('examples').options) {
+    option.text = option.value === OWN ? t('x.ownSql') : fillIn(t(EXAMPLES[option.value].title));
+  }
+  if (db) run(); // the row count line, in the new language
+});

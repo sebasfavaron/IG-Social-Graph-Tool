@@ -2,6 +2,7 @@ import { toGraph } from './lib/crawler.js';
 import { SHARE_BASE_URL, buildHash, encodeGraph } from './lib/share.js';
 import { photosFromThumbs } from './lib/vault.js';
 import { saveGraph } from './lib/store.js';
+import { lang, langButton, t, translateStatic } from './lib/i18n.js';
 import { formatDuration } from './lib/format.js';
 
 const $ = (id) => document.getElementById(id);
@@ -20,12 +21,11 @@ function settings() {
 }
 
 const STATUS_TEXT = {
-  running: (s) =>
-    s.refreshing ? 'Fetching names and photos…' : s.phase === 'followers' ? 'Listing your followers…' : 'Checking who follows whom…',
-  paused: () => 'Paused.',
-  cooldown: (s) => `Waiting for Instagram — resumes at ${new Date(s.cooldownUntil).toLocaleTimeString()}.`,
-  done: () => 'Done.',
-  error: () => 'Stopped.',
+  running: (s) => t(s.refreshing ? 'p.fetchingProfiles' : s.phase === 'followers' ? 'p.listing' : 'p.checking'),
+  paused: () => t('p.paused'),
+  cooldown: (s) => t('p.cooldown', new Date(s.cooldownUntil).toLocaleTimeString(lang)),
+  done: () => t('p.done'),
+  error: () => t('p.stopped'),
 };
 
 let settingsTouched = false;
@@ -36,24 +36,26 @@ async function checkLogin() {
   loggedIn = !!cookie?.value;
 }
 
+let last = null; // the state as last drawn, to draw again in another language
 function render(s) {
+  last = s;
   const has = !!s;
   $('status').textContent = has
     ? STATUS_TEXT[s.status]?.(s) || s.status
     : loggedIn
-      ? 'Maps who among your followers know each other. It takes about an hour per 500 followers, and runs on its own.'
-      : 'Log in to Instagram in this browser first. It uses your own session.';
+      ? t('p.pitch')
+      : t('p.logInFirst');
   $('login').hidden = has || loggedIn;
   $('intro').hidden = has;
   $('stats').hidden = !has;
   $('start').hidden = (has && s.status !== 'done') || (!has && !loggedIn);
-  $('start').textContent = has ? 'Start over' : 'Start';
+  $('start').textContent = has ? t('p.startOver') : t('p.start');
   $('resume').hidden = !has || !['paused', 'error', 'cooldown'].includes(s.status);
   $('pause').hidden = !has || !['running', 'cooldown'].includes(s.status);
   // crawls made before names and photos were kept have none; a worker older than this
   // popup sends no count at all, so the button stays hidden for it
   $('profiles').hidden = !has || s.status !== 'done' || s.profiles === undefined;
-  $('profiles').textContent = s?.profiles ? 'Refresh names & photos' : 'Get names & photos';
+  $('profiles').textContent = s?.profiles ? t('p.refreshProfiles') : t('p.getProfiles');
   $('view').disabled = $('share').disabled = !has || s.links === 0;
   $('error').hidden = !s?.error || s.status === 'running';
   $('error').textContent = s?.error || '';
@@ -65,7 +67,7 @@ function render(s) {
 
   const target = s.settings.maxFollowers ? Math.min(s.settings.maxFollowers, s.total) : s.total;
   $('viewer').textContent = `@${s.viewer.username}`;
-  $('checked').textContent = s.phase === 'followers' ? `listing… ${s.total}` : `${s.done} / ${target}`;
+  $('checked').textContent = s.phase === 'followers' ? t('p.listingCount', s.total) : `${s.done} / ${target}`;
   $('links').textContent = s.links.toLocaleString();
   $('requests').textContent = s.requests.toLocaleString();
   // measured: from the pace so far, Instagram's slowdowns included; otherwise only a floor
@@ -76,10 +78,8 @@ function render(s) {
     measured: false,
   };
   $('eta').textContent =
-    s.status === 'done' ? '—' : s.phase === 'followers' ? '…' : `${measured ? '~' : 'at least '}${formatDuration(ms)}`;
-  $('eta').title = measured
-    ? 'From the pace so far, including the times Instagram made the crawl wait.'
-    : 'Not enough followers checked yet to measure the pace; this is the minimum at the current delay.';
+    s.status === 'done' ? '—' : s.phase === 'followers' ? '…' : measured ? `~${formatDuration(ms)}` : t('p.atLeast', formatDuration(ms));
+  $('eta').title = measured ? t('p.measuredTitle') : t('p.floorTitle');
   $('bar').style.width = s.phase === 'followers' ? '3%' : `${target ? (100 * s.done) / target : 0}%`;
 
   if (!settingsTouched) {
@@ -99,14 +99,14 @@ async function act(fn) {
 
 $('delay').oninput = $('max').oninput = () => (settingsTouched = true);
 $('start').onclick = () => {
-  if ($('start').textContent === 'Start over' && !confirm('Discard the current graph and crawl again?')) return;
+  if (last && !confirm(t('p.confirmRestart'))) return;
   act(() => send('start', { settings: settings() }));
 };
 $('resume').onclick = () => act(() => send('resume', { settings: settings() }));
 $('pause').onclick = () => act(() => send('pause'));
 $('profiles').onclick = () => act(() => send('refreshProfiles'));
 $('reset').onclick = () => {
-  if (confirm('Delete everything collected so far?')) act(() => send('reset'));
+  if (confirm(t('p.confirmReset'))) act(() => send('reset'));
 };
 $('login').onclick = () => chrome.tabs.create({ url: 'https://www.instagram.com/' });
 $('guide').onclick = (e) => {
@@ -118,15 +118,14 @@ $('view').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewe
 // photos go to the shared storage (store.js), and the link is just the username,
 // opening on the public page (loners included; the viewer hides them).
 $('share').onclick = async () => {
-  const label = $('share').textContent;
   let url;
   try {
     $('share').disabled = true;
-    $('share').textContent = 'Uploading…';
+    $('share').textContent = t('uploading');
     const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
     const graph = toGraph(crawl);
     const owner = graph.username || graph.metadata?.loggedUsername;
-    if (!owner) throw new Error('the crawl does not say whose graph it is');
+    if (!owner) throw new Error(t('p.noOwner'));
     await saveGraph({
       owner,
       g: await encodeGraph(graph),
@@ -137,23 +136,30 @@ $('share').onclick = async () => {
     url = SHARE_BASE_URL + buildHash({ o: owner });
   } catch (err) {
     $('error').hidden = false;
-    $('error').textContent = `Could not share: ${err.message}.`;
-    $('share').textContent = label;
+    $('error').textContent = t('couldNotShare', err.message);
+    $('share').textContent = t('p.share');
     return;
   } finally {
     $('share').disabled = false;
   }
   try {
     await navigator.clipboard.writeText(url);
-    $('share').textContent = 'Link copied';
+    $('share').textContent = t('linkCopied');
   } catch (_) {
-    prompt('Copy this link:', url);
+    prompt(t('copyThisLink'), url);
   }
-  setTimeout(() => ($('share').textContent = label), 2500);
+  setTimeout(() => ($('share').textContent = t('p.share')), 2500);
 };
 
 chrome.storage.onChanged.addListener(() => act(() => send('getState')));
 chrome.cookies.onChanged.addListener(({ cookie }) => {
   if (cookie.name === 'ds_user_id') checkLogin().then(() => act(() => send('getState')));
+});
+// Spanish by default; the EN/ES button switches it, shared with the extension's viewer
+document.documentElement.lang = lang;
+translateStatic();
+langButton($('lang'), () => {
+  translateStatic();
+  render(last);
 });
 checkLogin().then(() => act(() => send('getState')));

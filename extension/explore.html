@@ -1,14 +1,15 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Explore the graph</title>
+    <title>Explorar el grafo</title>
     <link rel="icon" href="icon128.png" />
     <script>
       try {
         const saved = localStorage.getItem('theme');
         if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+        if (localStorage.getItem('lang') === 'en') document.documentElement.lang = 'en';
       } catch (_) {}
     </script>
     <style>
@@ -65,8 +66,17 @@
         padding: 20px 16px 60px;
       }
       h1 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
         font-size: 20px;
         margin: 0 0 4px;
+      }
+      #lang {
+        padding: 2px 9px;
+        font-size: 12px;
+        font-weight: 600;
       }
       .muted {
         color: var(--muted);
@@ -258,21 +268,21 @@
   </head>
   <body>
     <main>
-      <h1>Explore the graph</h1>
+      <h1><span data-i18n="x.title">Explorar el grafo</span> <button id="lang">EN</button></h1>
       <div class="muted">
-        Ask the shared graphs anything in SQL (SQLite). Everything runs in this page; nothing is uploaded.
-        <a id="back" href="./">Back to the graph</a>
+        <span data-i18n="x.intro">Hacele preguntas a los grafos compartidos. Todo corre en esta página; no se sube nada. </span>
+        <a id="back" href="./" data-i18n="x.back">Volver al grafo</a>
       </div>
 
       <form class="load" id="load-form">
-        <label for="owners" class="muted">Graphs</label>
-        <input id="owners" placeholder="usernames, separated by commas: sebas.favaron, nachonnc" autocomplete="off" spellcheck="false" />
-        <button class="primary" id="load">Load</button>
+        <label for="owners" class="muted" data-i18n="x.graphs">Grafos</label>
+        <input id="owners" placeholder="usuarios separados por comas: sebas.favaron, nachonnc" data-i18n-placeholder="x.ownersPlaceholder" autocomplete="off" spellcheck="false" />
+        <button class="primary" id="load" data-i18n="x.load">Cargar</button>
         <span id="status" class="muted" role="status"></span>
       </form>
 
       <section class="ask">
-        <label for="examples" class="question-label">Question</label>
+        <label for="examples" class="question-label" data-i18n="x.question">Pregunta</label>
         <span class="select">
           <select id="examples"></select>
         </span>
@@ -281,29 +291,29 @@
         </div>
         <div id="error" hidden></div>
         <div class="results" id="results" hidden><table id="table"></table></div>
-        <p class="note muted">
-          Each crawl only sees follows among its owner's own people. A follow between two people who share no
-          loaded circle is missing from the data, so "none found" there means "can't see".
+        <p class="note muted" data-i18n="x.caveat">
+          Cada crawl solo ve los seguimientos entre la gente de su dueño. Un seguimiento entre dos personas que no
+          comparten ningún círculo cargado no está en los datos, así que "no hay" ahí quiere decir "no se ve".
         </p>
 
         <details id="sql-box" class="box">
-          <summary>SQL behind this question <span class="muted">· edit it to ask your own</span></summary>
+          <summary><span data-i18n="x.sqlSummary">El SQL de esta pregunta </span><span class="muted" data-i18n="x.sqlHint">· editalo para preguntar lo tuyo</span></summary>
           <textarea id="sql" spellcheck="false" aria-label="SQL query"></textarea>
           <div class="bar">
-            <button class="primary" id="run" disabled title="Run (Ctrl+Enter)">Run</button>
-            <span class="muted">SQLite · Ctrl+Enter runs</span>
+            <button class="primary" id="run" disabled title="Ejecutar (Ctrl+Enter)" data-i18n="x.run" data-i18n-title="x.runTitle">Ejecutar</button>
+            <span class="muted" data-i18n="x.sqlNote">SQLite · Ctrl+Enter ejecuta</span>
           </div>
           <dl class="schema">
             <dt>owners(username, position)</dt>
-            <dd>whose graphs are loaded; position 0 is the first</dd>
+            <dd data-i18n="x.owners">de quiénes son los grafos cargados; la posición 0 es la primera</dd>
             <dt>people(username, name, private, verified)</dt>
-            <dd>everyone in any loaded graph</dd>
+            <dd data-i18n="x.people">todos los que están en algún grafo cargado</dd>
             <dt>follows(source, target)</dt>
-            <dd>source follows target</dd>
+            <dd data-i18n="x.follows">source sigue a target</dd>
             <dt>circles(owner, username)</dt>
-            <dd>username follows the owner, or the owner follows them</dd>
+            <dd data-i18n="x.circles">username sigue al dueño, o el dueño lo sigue</dd>
             <dt>edges(a, b)</dt>
-            <dd>view: follows in both directions, for paths</dd>
+            <dd data-i18n="x.edges">vista: seguimientos en las dos direcciones, para caminos</dd>
           </dl>
         </details>
       </section>
