@@ -89,6 +89,6 @@ test('a full-share link is short and keeps the view state', () => {
   assert.equal(state.s, 'ab'.repeat(16));
   assert.equal(state.k, key);
   assert.equal(state.p, 'ana');
-  assert.equal(state.m, 'bea');
+  assert.deepEqual(state.m, ['bea']);
   assert.equal(state.g, null);
 });

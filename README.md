@@ -41,7 +41,7 @@ The database keeps one graph per person and one row per Instagram account. Someo
 
 ### Combine two people's graphs
 
-**Combine with a friend…** takes a share link a friend made and draws both graphs as one; nothing new is uploaded, and the combined link is both usernames (`#o=you&m=friend`). The key switches from friend groups to circles: the people you both know, the ones only you know, the ones only they know. Point at a circle to highlight its people. The combined graph has its own share link, and **@you only** goes back.
+**Combine with a friend…** takes a share link a friend made and draws both graphs as one; nothing new is uploaded. Press it again to add more people, up to five. The key switches from friend groups to circles: one colour for the people only each of you knows, and one for the people in more than one circle (with two people, "in both"). Click a circle to keep it highlighted. The combined link lists the usernames (`#o=you&m=friend,another`), and **@you only** goes back.
 
 ### Older links
 

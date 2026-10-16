@@ -212,9 +212,9 @@ export async function decodeGraph(encoded) {
 // The rest of the view rides along after the graph:
 //   #g=<graph>&p=<selected username>&c=<follower|following|mutual>&v=<x>,<y>,<zoom>
 //   &n=<name of group 1>,<name of group 2>,…   (empty = unnamed; groups are numbered by size)
-//   &m=<second owner>   two people's graphs merged (merge.js); the first owner is in g
-// A stored graph starts  #o=<owner>  instead of g=, same rest; with m= both owners'
-// graphs are read from the storage and merged. Older full shares start
+//   &m=<owner>,<owner>   graphs merged (merge.js); the first owner is in g or o
+// A stored graph starts  #o=<owner>  instead of g=, same rest; with m= every owner's
+// graph is read from the storage and merged. Older full shares start
 // #s=<share id>&k=<key>.
 //
 // Every character here is one RFC 3986 allows in a fragment. iOS (share sheet, Messages,
@@ -227,7 +227,8 @@ export const MAX_GROUP_NAME = 30;
 
 export function buildHash({ o, g, s, k, p, c, v, n, m }) {
   const parts = o ? [`o=${encodeURIComponent(o)}`] : s ? [`s=${s}`, `k=${k}`] : [`g=${g}`];
-  if (m) parts.push(`m=${encodeURIComponent(m)}`);
+  const more = [m].flat().filter(Boolean);
+  if (more.length) parts.push(`m=${more.map(encodeURIComponent).join(',')}`);
   if (p) parts.push(`p=${encodeURIComponent(p)}`);
   if (p && c) parts.push(`c=${c}`);
   if (v) parts.push(`v=${Math.round(v.x)},${Math.round(v.y)},${+v.k.toFixed(2)}`);
@@ -253,7 +254,8 @@ export function parseHash(hash) {
     c: ['follower', 'following', 'mutual'].includes(category) ? category : null,
     v: [x, y, k].every(Number.isFinite) && k > 0 ? { x, y, k } : null,
     n: groupNames(hash),
-    m: params.get('m') || null,
+    // m=b,c (or m=b&m=c, as someone might type it): the other owners, in order
+    m: params.getAll('m').flatMap((m) => m.split(',')).filter(Boolean),
   };
 }
 

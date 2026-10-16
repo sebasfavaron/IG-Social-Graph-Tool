@@ -111,8 +111,12 @@ test('a stored link is just the usernames plus the view', () => {
   assert.equal(hash, '#o=sebas.favaron&m=nacho_1&p=ana&n=cuba,itba');
   const state = parseHash(hash);
   assert.equal(state.o, 'sebas.favaron');
-  assert.equal(state.m, 'nacho_1');
+  assert.deepEqual(state.m, ['nacho_1']);
   assert.deepEqual(state.n, ['cuba', 'itba']);
+  // several owners: written with commas, also read when typed as repeated m=
+  assert.equal(buildHash({ o: 'a', m: ['b', 'c.d'] }), '#o=a&m=b,c.d');
+  assert.deepEqual(parseHash('#o=a&m=b&m=c.d').m, ['b', 'c.d']);
+  assert.deepEqual(parseHash('#o=a').m, []);
 });
 
 test("each owner's crawl comes back out of a merged graph", () => {

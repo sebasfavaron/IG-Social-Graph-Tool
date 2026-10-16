@@ -7,7 +7,7 @@ import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, pa
 import { downloadShare, photosFromThumbs, unpackShare, unseal } from './lib/vault.js';
 import { loadGraph, loadPeople, saveGraph } from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
-import { CIRCLE, circles, mergeGraphs, ownGraph } from './lib/merge.js';
+import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
 
 const INSTALL_URL = 'https://github.com/sebasfavaron/IG-Social-Graph-Tool#map-your-own-followers-chrome-extension';
 
@@ -20,7 +20,6 @@ const inExtension = typeof chrome !== 'undefined' && !!chrome.storage?.local;
 let shown = null; // what is on screen, for the share link
 let encoded = null; // `shown` packed for the link; filled in the background
 let viewTouched = false; // the view goes in the link only once someone zoomed or panned
-let beforeMerge = null; // the graph shown before combining, to go back to
 // Names, photos and flags from the crawl (extension only: share links carry usernames).
 let profiles = {}; // username -> { name, pic, private, verified }
 let photos = new Map(); // username -> data URL
@@ -45,13 +44,21 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   const username = graph.username || graph.metadata?.loggedUsername;
   // the example is nobody's: it never goes to the storage, and shares as a #g= link
   const example = graph.metadata?.generatedBy === 'example';
-  parts = crawls ? new Map(crawls.map((c) => [c.username, c])) : new Map(username && !example ? [[username, graph]] : []);
+  // combined: the other owners, drawn by circle instead of friend group
+  const partners = (graph.partners || []).filter((p) => graph.nodes.some((n) => n.id === p));
+  const owners = [username, ...partners];
+  const combined = partners.length > 0;
+  parts = crawls
+    ? new Map(crawls.map((c) => [c.username, c]))
+    : combined
+      ? new Map(owners.map((o) => [o, ownGraph(graph, o)])) // a merged graph from an old link
+      : new Map(username && !example ? [[username, graph]] : []);
   storedOwners = new Set(stored);
-  const partner = graph.partner && graph.nodes.some((n) => n.id === graph.partner) ? graph.partner : null;
   const total = graph.nodes.length;
   const pruned = pruneLoneNodes(graph);
-  document.title = partner ? `@${username} + @${partner}` : username ? `@${username}'s circle` : 'IG Social Graph';
-  $('title').textContent = partner ? `@${username} + @${partner}` : username ? `@${username}` : 'IG Social Graph';
+  const names = owners.map((o) => `@${o}`).join(' + ');
+  document.title = combined ? names : username ? `@${username}'s circle` : 'IG Social Graph';
+  $('title').textContent = combined ? names : username ? `@${username}` : 'IG Social Graph';
   const loners = total - pruned.nodes.length;
   const extra = document.createElement('span');
   extra.className = 'wide-only';
@@ -71,8 +78,8 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   full.links.sort((a, b) => byId(a.source, b.source) || byId(a.target, b.target));
   const kept = new Set(pruned.nodes.map((n) => n.id));
   const hidden = new Set(full.nodes.map((n) => n.id).filter((id) => !kept.has(id)));
-  groups = partner ? circleKey(full, username, partner, hidden) : friendGroups(full, { exclude: username, hidden });
-  if (partner) extra.after(` · ${groups.sizes[0]} in both circles`);
+  groups = combined ? circleKey(full, owners, hidden) : friendGroups(full, { exclude: username, hidden });
+  if (combined) extra.after(` · ${groups.sizes[0]} ${owners.length === 2 ? 'in both circles' : 'in more than one circle'}`);
   graphControl?.destroy();
   graphControl = pruned.nodes.length
     ? drawGraph($('graph'), full, {
@@ -86,10 +93,9 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
         onSelectionChange,
       })
     : null;
-  shown = graphControl ? { ...full, username, partner } : null;
-  if (!partner) beforeMerge = null;
-  groupAnchorIds = partner ? [] : groupAnchors(groups.groupOf, full.links, groups.sizes.length);
-  groupNames = partner ? [] : loadGroupNames();
+  shown = graphControl ? { ...full, username, partners } : null;
+  groupAnchorIds = combined ? [] : groupAnchors(groups.groupOf, full.links, groups.sizes.length);
+  groupNames = combined ? [] : loadGroupNames();
   heldGroup = null;
   renderGroups();
   $('graph').setAttribute(
@@ -101,9 +107,9 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   $('share').hidden = !shown;
   // someone looking at a shared graph: how to make their own (the extension has it already)
   $('invite').hidden = inExtension || !shown;
-  $('combine').hidden = !shown || !username || !!partner;
-  $('uncombine').hidden = !beforeMerge;
-  if (beforeMerge) $('uncombine').querySelector('.label').textContent = `@${beforeMerge.username} only`;
+  $('combine').hidden = !shown || !username || owners.length >= MAX_OWNERS;
+  $('uncombine').hidden = !shown || !combined;
+  $('uncombine').querySelector('.label').textContent = `@${username} only`;
   pinned = null;
   viewTouched = false;
   encoded = encodedGraph;
@@ -140,8 +146,8 @@ function viewState() {
     p: graphControl?.selected(),
     c: pinned,
     v: viewTouched && graphControl ? graphControl.view() : null,
-    n: shown?.partner ? null : groupNames,
-    m: shown?.partner,
+    n: shown?.partners.length ? null : groupNames,
+    m: shown?.partners,
   };
 }
 // #o= when every crawl on screen is in the shared storage; the graph itself otherwise
@@ -516,19 +522,27 @@ function saveGroupName(i, name) {
   syncUrl();
 }
 
-// Two people combined: the key shows circles instead of friend groups. groupOf holds
-// colour indices (--g5 both, --g2 first, --g4 second), which the key highlights by.
-const CIRCLE_COLOUR = { [CIRCLE.BOTH]: 4, [CIRCLE.FIRST]: 1, [CIRCLE.SECOND]: 3 };
-function circleKey(graph, first, second, hidden) {
-  const { circleOf } = circles({ links: graph.links, username: first, partner: second });
+// People combined: the key shows circles instead of friend groups, the people in more
+// than one circle first, then each owner's own. groupOf holds colour indices: --g5 for
+// more than one, and --g2, --g4, --g1, --g3, --g6 per owner in order (two owners keep the
+// colours they always had), which the key highlights by.
+const OWNER_COLOURS = [1, 3, 0, 2, 5];
+const SHARED_COLOUR = 4;
+function circleKey(graph, owners, hidden) {
+  const { circleOf } = circles({ links: graph.links, username: owners[0], partners: owners.slice(1) });
+  const shared = owners.length;
+  const colourOf = (c) => (c === shared ? SHARED_COLOUR : OWNER_COLOURS[c]);
+  const order = [shared, ...owners.keys()];
   const groupOf = new Map();
-  const sizes = [0, 0, 0];
+  const sizes = order.map(() => 0);
   for (const [id, c] of circleOf) {
-    groupOf.set(id, CIRCLE_COLOUR[c]);
-    if (!hidden.has(id)) sizes[c]++;
+    groupOf.set(id, colourOf(c));
+    if (!hidden.has(id)) sizes[order.indexOf(c)]++;
   }
-  const labels = ['In both circles', `Only @${first}'s`, `Only @${second}'s`];
-  return { groupOf, sizes, labels, colours: [CIRCLE.BOTH, CIRCLE.FIRST, CIRCLE.SECOND].map((c) => CIRCLE_COLOUR[c]) };
+  const labels = order.map((c) =>
+    c === shared ? (owners.length === 2 ? 'In both circles' : 'In more than one') : `Only @${owners[c]}'s`
+  );
+  return { groupOf, sizes, labels, colours: order.map(colourOf) };
 }
 
 let groupsKeyShown = false;
@@ -700,10 +714,10 @@ document.addEventListener('keydown', (e) => {
 $('example').onclick = () => show(EXAMPLE_GRAPH);
 
 // ---- shared storage (store.js): a crawl per owner, people once ----------------------
-// -> { graph, crawls } for #o=owner (and m=partner: both crawls, merged); names and
+// -> { graph, crawls } for #o=owner (and m=partners: every crawl, merged); names and
 // photos come along into profiles/photos.
-async function openStored(owner, partner) {
-  const owners = partner ? [owner, partner] : [owner];
+async function openStored(owner, partners = []) {
+  const owners = [owner, ...partners];
   const crawls = await Promise.all(
     owners.map(async (o) => {
       const g = await loadGraph(o);
@@ -711,7 +725,7 @@ async function openStored(owner, partner) {
       return decodeGraph(g);
     })
   );
-  const graph = partner ? mergeGraphs(crawls[0], crawls[1]) : crawls[0];
+  const graph = partners.length ? mergeGraphs(...crawls) : crawls[0];
   const people = await loadPeople(graph.nodes.map((n) => n.id));
   return { graph, crawls, ...people };
 }
@@ -723,16 +737,17 @@ async function openStored(owner, partner) {
 async function openFullShare(ref, key) {
   return unpackShare(await unseal(await downloadShare(ref), key));
 }
-async function copyOver(full, partner, ref) {
+async function copyOver(full, partners, ref) {
   const graph = await decodeGraph(full.g);
   const owner = graph.username;
   if (!owner) return null;
-  const owners = partner ? [owner, partner] : [owner];
+  const owners = [owner, ...partners];
+  const combined = partners.length > 0;
   for (const o of owners) {
-    const crawl = partner ? ownGraph(graph, o) : graph;
+    const crawl = combined ? ownGraph(graph, o) : graph;
     await saveGraph({
       owner: o,
-      g: partner ? await encodeGraph(crawl) : full.g,
+      g: combined ? await encodeGraph(crawl) : full.g,
       ids: new Set(crawl.nodes.map((n) => n.id)),
       profiles: full.profiles,
       photos: full.photos,
@@ -761,7 +776,7 @@ $('combine-form').onsubmit = async (e) => {
   const at = text.search(/#[gso]=/);
   const state = at >= 0 ? parseHash(text.slice(at)) : null;
   if (!state?.g && !state?.s && !state?.o) return fail('That is not a share link: they contain "#o=" after the address.');
-  if (state.m) return fail('That link already combines two people. Ask for one with only theirs.');
+  if (state.m.length) return fail('That link already combines people. Ask for one with only theirs.');
   if (!shown) return;
   $('combine-go').disabled = true;
   try {
@@ -769,7 +784,7 @@ $('combine-form').onsubmit = async (e) => {
     let friendStored = false;
     if (state.s) {
       // an old link: copied over first, then read like any stored one
-      const owners = await copyOver(await openFullShare(state.s, state.k), null, state.s);
+      const owners = await copyOver(await openFullShare(state.s, state.k), [], state.s);
       if (!owners) throw new Error('that link does not say whose graph it is');
       state.o = owners[0];
     }
@@ -783,15 +798,13 @@ $('combine-form').onsubmit = async (e) => {
     } else {
       friend = await decodeGraph(state.g);
     }
-    const merged = mergeGraphs(shown, friend);
-    const original = shown;
-    const stored = [...storedOwners].filter((o) => o === original.username);
+    // each crawl on screen plus theirs (the example has no crawl of its own)
+    const crawls = [...(parts.size ? parts.values() : [shown]), friend];
+    const merged = mergeGraphs(...crawls);
+    const stored = [...storedOwners].filter((o) => parts.has(o));
     if (friendStored) stored.push(friend.username);
     dialog.close();
-    await show(merged, { crawls: [original, friend], stored });
-    beforeMerge = original;
-    $('uncombine').hidden = false;
-    $('uncombine').querySelector('.label').textContent = `@${original.username} only`;
+    await show(merged, { crawls, stored });
     syncUrl();
   } catch (err) {
     fail(`Could not combine: ${err.message}.`);
@@ -800,9 +813,9 @@ $('combine-form').onsubmit = async (e) => {
   }
 };
 $('uncombine').onclick = () => {
-  if (!beforeMerge) return;
-  const owner = beforeMerge.username;
-  show(beforeMerge, { stored: storedOwners.has(owner) ? [owner] : [] }).then(syncUrl);
+  const owner = shown?.username;
+  if (!parts.has(owner)) return;
+  show(parts.get(owner), { stored: storedOwners.has(owner) ? [owner] : [] }).then(syncUrl);
 };
 
 // Share: the graph on screen and how it is being looked at travel inside the link (after
@@ -824,10 +837,10 @@ async function openShareHash() {
       profiles = full.profiles;
       photos = full.photos;
       const graph = await decodeGraph(full.g);
-      if (state.m) graph.partner = state.m;
+      graph.partners = state.m;
       await show(graph, { encodedGraph: full.g });
     } else if (state.o) {
-      const sameOnScreen = isStored() && shown?.username === state.o && (shown.partner || null) === state.m;
+      const sameOnScreen = isStored() && shown?.username === state.o && shown.partners.join() === state.m.join();
       if (!sameOnScreen) {
         $('counts').textContent = 'Opening the shared graph…';
         const opened = await openStored(state.o, state.m);
@@ -839,7 +852,7 @@ async function openShareHash() {
       profiles = ownProfiles;
       photos = ownPhotos;
       const graph = await decodeGraph(state.g);
-      if (state.m) graph.partner = state.m;
+      graph.partners = state.m;
       await show(graph, { encodedGraph: state.g });
     }
   } catch (err) {
@@ -859,7 +872,7 @@ async function openShareHash() {
     graphControl.setView(state.v);
     viewTouched = true;
   }
-  if (state.n && !shown?.partner) {
+  if (state.n && !shown?.partners.length) {
     groupNames = state.n;
     renderGroups();
   }
