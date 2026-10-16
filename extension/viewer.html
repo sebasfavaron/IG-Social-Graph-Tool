@@ -384,8 +384,102 @@
       #combine-dialog p {
         margin: 0 0 10px;
       }
-      #combine-link {
+      #picker-filter {
         width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 8px;
+        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--chip);
+        color: inherit;
+        font: inherit;
+      }
+      #picker-filter[hidden] {
+        display: none;
+      }
+      #picker-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        max-height: min(360px, 55vh);
+        overflow-y: auto;
+      }
+      .pick-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .pick-row:hover {
+        background: var(--chip-hover);
+      }
+      .pick-row:has(input:checked) {
+        background: var(--chip-hover);
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+      .pick-row:has(input:disabled) {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .pick-row input {
+        flex: none;
+        margin: 0;
+        width: 16px;
+        height: 16px;
+        accent-color: var(--accent);
+      }
+      .pick-row .face {
+        flex: none;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        object-fit: cover;
+        display: grid;
+        place-items: center;
+        background: var(--chip);
+        border: 1px solid var(--line);
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .pick-row .who {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+      }
+      .pick-row .who > * {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .pick-row .meta {
+        flex: none;
+        text-align: right;
+        font-size: 12px;
+      }
+      #picker-status {
+        min-height: 1.4em;
+        margin: 6px 0 0 !important;
+      }
+      #paste-box {
+        margin-top: 6px;
+      }
+      #paste-box summary {
+        cursor: pointer;
+      }
+      .paste-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      #combine-link {
+        flex: 1;
+        min-width: 0;
         box-sizing: border-box;
         padding: 6px 8px;
         border: 1px solid var(--line);
@@ -616,6 +710,7 @@
       #empty {
         position: fixed;
         inset: 0;
+        padding: 16px;
         display: grid;
         place-items: center;
         color: var(--muted);
@@ -625,6 +720,9 @@
       #empty button,
       #empty a {
         pointer-events: auto;
+      }
+      #empty button + button {
+        margin-left: 8px;
       }
       #empty a {
         color: inherit;
@@ -794,8 +892,8 @@
       <button id="share" hidden data-i18n-title="shareTitle" title="Guarda el grafo con nombres y fotos en el almacenamiento compartido y copia un link corto. Nada de eso es privado.">
         <span class="wide-only" data-i18n="shareWide">Copiar link</span><span class="narrow-only" data-i18n="shareNarrow">Compartir</span>
       </button>
-      <button id="combine" hidden data-i18n-title="combineTitle" title="Pegá el link de un amigo para ver sus círculos juntos en un grafo">
-        <span class="wide-only" data-i18n="combineWide">Combinar con un amigo…</span><span class="narrow-only" data-i18n="combineNarrow">Combinar</span>
+      <button id="combine" hidden data-i18n-title="combineTitle" title="Elegí de quiénes ver los grafos juntos">
+        <span class="wide-only" data-i18n="combineWide">Combinar con amigos…</span><span class="narrow-only" data-i18n="combineNarrow">Amigos</span>
       </button>
       <button id="theme" aria-label="Cambiar a tema oscuro" data-i18n-title="switchTheme" title="Cambiar tema">☾</button>
       <button id="lang" aria-label="Switch to English" title="Switch to English">EN</button>
@@ -852,20 +950,27 @@
     </dialog>
 
     <dialog id="combine-dialog" class="panel-box" aria-labelledby="combine-title">
-      <form id="combine-form">
-        <h2 id="combine-title" data-i18n="combineDialogTitle">Combinar con el grafo de un amigo</h2>
-        <p class="muted" data-i18n="combineDialogText">
-          Pegá un link que tu amigo hizo con esta herramienta. Los círculos se dibujan juntos: la gente que
-          conocen los dos, y la que conoce solo uno.
-        </p>
-        <label for="combine-link" class="sr-only" data-i18n="friendLink">Link de tu amigo</label>
-        <input id="combine-link" type="text" inputmode="url" placeholder="https://…#o=…" autocomplete="off" spellcheck="false" required />
-        <p id="combine-error" class="error" role="alert" hidden></p>
-        <div class="actions">
-          <button type="button" id="combine-cancel" data-i18n="cancel">Cancelar</button>
-          <button type="submit" id="combine-go" class="primary" data-i18n="combine">Combinar</button>
-        </div>
-      </form>
+      <h2 id="combine-title" data-i18n="pickerTitle">Grafos compartidos</h2>
+      <p class="muted" data-i18n="pickerText">Elegí a quiénes ver juntos, hasta 5. Sus círculos se dibujan en un solo grafo.</p>
+      <label for="picker-filter" class="sr-only" data-i18n="pickerFilter">Buscar entre los grafos</label>
+      <input id="picker-filter" type="search" placeholder="Buscar entre los grafos" data-i18n-placeholder="pickerFilter" autocomplete="off" spellcheck="false" hidden />
+      <ul id="picker-list" aria-labelledby="combine-title"></ul>
+      <p id="picker-status" class="muted" role="status"></p>
+      <details id="paste-box">
+        <summary class="muted" data-i18n="pasteSummary">¿Te pasaron un link? Pegalo acá</summary>
+        <form id="combine-form">
+          <label for="combine-link" class="sr-only" data-i18n="friendLink">Link de tu amigo</label>
+          <div class="paste-row">
+            <input id="combine-link" type="text" inputmode="url" placeholder="https://…#o=…" autocomplete="off" spellcheck="false" required />
+            <button type="submit" id="combine-go" data-i18n="pasteAdd">Agregar</button>
+          </div>
+          <p id="combine-error" class="error" role="alert" hidden></p>
+        </form>
+      </details>
+      <div class="actions">
+        <button type="button" id="combine-cancel" data-i18n="cancel">Cancelar</button>
+        <button type="button" id="picker-go" class="primary">Ver</button>
+      </div>
     </dialog>
 
     <div id="announce" class="sr-only" aria-live="polite"></div>
@@ -873,6 +978,7 @@
     <div id="empty" hidden>
       <div>
         <p id="empty-text">Todavía no hay grafo. Corré un crawl desde el popup de la extensión.</p>
+        <button id="empty-picker" class="primary" data-i18n="seeShared">Ver grafos compartidos</button>
         <button id="example" data-i18n="tryExample">Probar un ejemplo</button>
       </div>
     </div>

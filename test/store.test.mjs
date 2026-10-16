@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadGraph, loadPeople, saveGraph } from '../extension/lib/store.js';
+import { listGraphs, loadGraph, loadPeople, saveGraph } from '../extension/lib/store.js';
 import { buildHash, parseHash } from '../extension/lib/share.js';
 import { mergeGraphs, ownGraph } from '../extension/lib/merge.js';
 
@@ -10,6 +10,7 @@ const jpeg = (fill, n) => `data:image/jpeg;base64,${Buffer.alloc(n, fill).toStri
 function fakeNeon() {
   const graphs = new Map();
   const dates = new Map(); // owner -> when the stored graph was shared
+  const counts = new Map(); // owner -> people in it
   const shareDates = new Map([['old', 1], ['newer', 50]]); // old share id -> when it was made
   let clock = 10;
   const people = new Map();
@@ -18,8 +19,9 @@ function fakeNeon() {
     const { query, params } = JSON.parse(init.body);
     calls.push(query);
     const ok = (rows) => new Response(JSON.stringify({ rows }));
-    if (query === 'select save_graph($1, $2, $3, $4)') {
-      const [owner, data, onlyIfMissing, fromShare] = params;
+    if (query === 'select save_graph($1, $2, $3, $4, $5)') {
+      const [owner, data, onlyIfMissing, fromShare, count] = params;
+      counts.set(owner, count);
       const made = shareDates.get(fromShare);
       if (onlyIfMissing && graphs.has(owner) && !(made && made > dates.get(owner))) return ok([[false]]);
       graphs.set(owner, data);
@@ -34,6 +36,13 @@ function fakeNeon() {
         people.set(r.u, old ? { ...r, n: pick(r.n, old.n), p: pick(r.p, old.p), t: pick(r.t, old.t) } : r);
       }
       return ok([[1]]);
+    }
+    if (query.includes('from list_graphs()')) {
+      const owners = [...graphs.keys()].sort((x, y) => dates.get(y) - dates.get(x));
+      return ok(owners.map((o) => {
+        const p = people.get(o);
+        return [o, new Date(dates.get(o) * 1000).toISOString(), counts.get(o), p?.n || null, p?.p || null, p?.t || null];
+      }));
     }
     if (query === 'select data from get_graph($1)') return ok(graphs.has(params[0]) ? [[graphs.get(params[0])]] : []);
     if (query.includes('from get_people($1)')) {
@@ -104,6 +113,18 @@ test('people go up in batches small enough for the database', async () => {
   const batches = neon.calls.filter((q) => q.startsWith('select save_people')).length;
   assert.ok(batches >= 2, `${batches} batch(es)`);
   assert.equal(neon.people.size, 400);
+});
+
+test('the list of shared graphs: newest first, with size, name and photo', async () => {
+  const neon = fakeNeon();
+  await saveGraph({ owner: 'ana', g: 'A', ids: new Set(['ana', 'bo', 'cy']), profiles, photos }, neon);
+  await saveGraph({ owner: 'cy', g: 'C', ids: new Set(['cy', 'bo']), profiles, photos }, neon);
+  const list = await listGraphs(neon);
+  assert.deepEqual(list.map((g) => g.owner), ['cy', 'ana']);
+  assert.deepEqual(list.map((g) => g.people), [2, 3]);
+  assert.equal(list[1].name, 'Ana Belén');
+  assert.equal(list[1].photo, photos.get('ana'));
+  assert.ok(list[0].updatedAt instanceof Date);
 });
 
 test('a stored link is just the usernames plus the view', () => {

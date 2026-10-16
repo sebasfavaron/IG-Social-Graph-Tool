@@ -19,6 +19,8 @@ create table if not exists graphs (
   data text not null,
   updated_at timestamptz not null default now()
 );
+-- how many people the graph holds, for the list of shared graphs (null: shared before it)
+alter table graphs add column if not exists people integer;
 create table if not exists people (
   username text primary key,
   name text,
@@ -43,8 +45,9 @@ $$;
 -- leave the newest one; without it (links to gists carry no date) only a missing graph
 -- is filled.
 drop function if exists save_graph(text, text, boolean);
+drop function if exists save_graph(text, text, boolean, text);
 create or replace function save_graph(owner_name text, graph_data text, only_if_missing boolean default false,
-                                      from_share text default null)
+                                      from_share text default null, people_count integer default null)
 returns boolean
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -65,16 +68,17 @@ begin
   if only_if_missing then
     made := (select created_at from shares where id = from_share);
     if made is null then
-      insert into graphs (owner, data) values (owner_name, graph_data) on conflict (owner) do nothing;
+      insert into graphs (owner, data, people) values (owner_name, graph_data, people_count)
+        on conflict (owner) do nothing;
     else
-      insert into graphs as g (owner, data, updated_at) values (owner_name, graph_data, made)
-        on conflict (owner) do update set data = excluded.data, updated_at = excluded.updated_at
+      insert into graphs as g (owner, data, updated_at, people) values (owner_name, graph_data, made, people_count)
+        on conflict (owner) do update set data = excluded.data, updated_at = excluded.updated_at, people = excluded.people
         where g.updated_at < excluded.updated_at;
     end if;
     return found;
   end if;
-  insert into graphs (owner, data) values (owner_name, graph_data)
-    on conflict (owner) do update set data = excluded.data, updated_at = now();
+  insert into graphs (owner, data, people) values (owner_name, graph_data, people_count)
+    on conflict (owner) do update set data = excluded.data, updated_at = now(), people = excluded.people;
   return true;
 end $$;
 
@@ -125,6 +129,17 @@ language sql stable security definer set search_path = public, pg_temp as $$
   select data, updated_at from graphs where owner = owner_name
 $$;
 
+-- Everyone who shared a graph, newest first, with their own name and photo: the list
+-- friends pick from to combine graphs. Public on purpose (see the top of this file).
+create or replace function list_graphs()
+returns table (owner text, updated_at timestamptz, people integer, name text, photo text, photo_type text)
+language sql stable security definer set search_path = public, pg_temp as $$
+  select g.owner, g.updated_at, g.people, p.name, replace(encode(p.photo, 'base64'), E'\n', ''), p.photo_type
+  from graphs g left join people p on p.username = g.owner
+  order by g.updated_at desc
+  limit 500
+$$;
+
 -- Names, flags and photos (base64) of up to 1000 accounts.
 create or replace function get_people(usernames text[])
 returns table (username text, name text, flags smallint, photo text, photo_type text)
@@ -135,11 +150,13 @@ language sql stable security definer set search_path = public, pg_temp as $$
 $$;
 
 revoke all on function storage_left() from public;
-revoke all on function save_graph(text, text, boolean, text) from public;
+revoke all on function save_graph(text, text, boolean, text, integer) from public;
+revoke all on function list_graphs() from public;
 revoke all on function save_people(jsonb, boolean) from public;
 revoke all on function get_graph(text) from public;
 revoke all on function get_people(text[]) from public;
-grant execute on function save_graph(text, text, boolean, text) to share_client;
+grant execute on function save_graph(text, text, boolean, text, integer) to share_client;
+grant execute on function list_graphs() to share_client;
 grant execute on function save_people(jsonb, boolean) to share_client;
 grant execute on function get_graph(text) to share_client;
 grant execute on function get_people(text[]) to share_client;

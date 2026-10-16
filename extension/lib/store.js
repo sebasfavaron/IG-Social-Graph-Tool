@@ -79,7 +79,11 @@ export async function saveGraph(
   const rows = peopleRows(ids, profiles, photos);
   const print = await fingerprint(g, rows);
   if (!onlyIfMissing && readSaved(owner) === print) return true;
-  const [[saved]] = await sharesQuery('select save_graph($1, $2, $3, $4)', [owner, g, onlyIfMissing, fromShare], fetchImpl);
+  const [[saved]] = await sharesQuery(
+    'select save_graph($1, $2, $3, $4, $5)',
+    [owner, g, onlyIfMissing, fromShare, ids.size],
+    fetchImpl
+  );
   if (!saved && onlyIfMissing) return false;
   let batch = [];
   let size = 0;
@@ -101,6 +105,19 @@ export async function saveGraph(
 }
 
 // -> the owner's graph packed as in a #g= link, or null when they never shared one
+// Everyone who shared a graph, newest first:
+// -> [{ owner, updatedAt: Date, people (count, or null), name, photo (data URL or null) }]
+export async function listGraphs({ fetchImpl = fetch } = {}) {
+  const rows = await sharesQuery('select owner, updated_at, people, name, photo, photo_type from list_graphs()', [], fetchImpl);
+  return rows.map(([owner, updatedAt, people, name, photo, type]) => ({
+    owner,
+    updatedAt: new Date(updatedAt),
+    people,
+    name: name || '',
+    photo: photo && type ? `data:${type};base64,${photo}` : null,
+  }));
+}
+
 export async function loadGraph(owner, { fetchImpl = fetch } = {}) {
   const rows = await sharesQuery('select data from get_graph($1)', [owner], fetchImpl);
   return rows[0]?.[0] ?? null;

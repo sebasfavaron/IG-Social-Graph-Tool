@@ -5,7 +5,7 @@ import { pruneLoneNodes } from './lib/prune.js';
 import { friendGroups } from './lib/groups.js';
 import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
 import { downloadShare, photosFromThumbs, unpackShare, unseal } from './lib/vault.js';
-import { loadGraph, loadPeople, loadPhotos, saveGraph } from './lib/store.js';
+import { listGraphs, loadGraph, loadPeople, loadPhotos, saveGraph } from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { lang, setLang, t, translateStatic } from './lib/i18n.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
@@ -101,7 +101,7 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   updateExplore();
   // someone looking at a shared graph: how to make their own (the extension has it already)
   $('invite').hidden = inExtension || !shown;
-  $('combine').hidden = !shown || !username || owners.length >= MAX_OWNERS;
+  $('combine').hidden = !shown;
   pinned = null;
   viewTouched = false;
   encoded = encodedGraph;
@@ -784,6 +784,7 @@ function applyLanguage() {
   renderGroups();
   lastSelected = null; // repaint the person at the top of the panel too
   updatePanel();
+  if ($('combine-dialog').open) renderPicker(); // not `dialog`: this can run before it is declared
 }
 $('lang').onclick = () => {
   setLang(lang === 'es' ? 'en' : 'es');
@@ -891,14 +892,124 @@ async function copyOver(full, partners, ref) {
   return owners;
 }
 
-// ---- combine: a friend's share link drawn together with this graph -----------------
+// ---- combine: pick from everyone who shared, or paste a link -----------------------
+// Everything stored is public among friends, so the menu lists every shared graph
+// (list_graphs) and the ones ticked are drawn together, in the order they were ticked.
 const dialog = $('combine-dialog');
-$('combine').onclick = () => {
+let chosen = []; // owners ticked, in order; the first is the one the link starts with
+let shared = null; // the list, fetched once per page
+function openPicker() {
   $('combine-error').hidden = true;
   $('combine-link').value = '';
+  $('picker-filter').value = '';
+  chosen = [...parts.keys()];
+  renderPicker();
   dialog.showModal();
-};
+  if (!shared) {
+    $('picker-status').textContent = t('pickerLoading');
+    listGraphs()
+      .then((list) => {
+        shared = list;
+        $('picker-status').textContent = '';
+        renderPicker();
+      })
+      .catch((err) => ($('picker-status').textContent = t('pickerFailed', err.message)));
+  }
+}
+$('combine').onclick = openPicker;
+$('empty-picker').onclick = openPicker;
 $('combine-cancel').onclick = () => dialog.close();
+
+const ago = (date) => {
+  const minutes = (date - Date.now()) / 60_000;
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
+  if (Math.abs(minutes) < 60) return rtf.format(Math.round(minutes), 'minute');
+  if (Math.abs(minutes) < 60 * 24) return rtf.format(Math.round(minutes / 60), 'hour');
+  return rtf.format(Math.round(minutes / 60 / 24), 'day');
+};
+
+function renderPicker() {
+  // a crawl on screen that was never shared (the extension's own) is listed too
+  const entries = [...(shared || [])];
+  for (const owner of parts.keys()) {
+    if (!entries.some((e) => e.owner === owner)) entries.unshift({ owner, unshared: true, name: profiles[owner]?.name || '' });
+  }
+  const query = fold($('picker-filter').value.trim());
+  $('picker-filter').hidden = entries.length < 8;
+  const visible = entries.filter((e) => !query || fold(e.owner).includes(query) || fold(e.name).includes(query));
+  const full = chosen.length >= MAX_OWNERS;
+  $('picker-list').replaceChildren(
+    ...visible.map((e) => {
+      const li = document.createElement('li');
+      const row = document.createElement('label');
+      row.className = 'pick-row';
+      const box = Object.assign(document.createElement('input'), { type: 'checkbox', value: e.owner });
+      box.checked = chosen.includes(e.owner);
+      box.disabled = full && !box.checked;
+      box.onchange = () => {
+        chosen = box.checked ? [...chosen, e.owner] : chosen.filter((o) => o !== e.owner);
+        renderPicker();
+      };
+      const photo = e.photo || photos.get(e.owner);
+      const face = photo
+        ? Object.assign(document.createElement('img'), { src: photo, alt: '', className: 'face' })
+        : Object.assign(document.createElement('span'), { className: 'face', textContent: e.owner[0].toUpperCase() });
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.append(Object.assign(document.createElement('strong'), { textContent: `@${e.owner}` }));
+      if (e.name) who.append(Object.assign(document.createElement('span'), { className: 'muted', textContent: e.name }));
+      const meta = document.createElement('span');
+      meta.className = 'meta muted';
+      meta.append(
+        e.unshared ? t('pickerUnshared') : e.people ? t('pickerPeople', e.people) : '',
+        document.createElement('br'),
+        e.updatedAt ? ago(e.updatedAt) : ''
+      );
+      row.append(box, face, who, meta);
+      li.append(row);
+      return li;
+    })
+  );
+  if (shared && !visible.length) $('picker-status').textContent = query ? t('pickerNoMatch') : t('pickerNone');
+  else if (shared) $('picker-status').textContent = full ? t('pickerMax', MAX_OWNERS) : '';
+  $('picker-go').textContent = t('pickerGo', chosen.length);
+  $('picker-go').disabled = !chosen.length;
+}
+$('picker-filter').oninput = renderPicker;
+
+$('picker-go').onclick = async () => {
+  const same = chosen.length === parts.size && chosen.every((o, i) => [...parts.keys()][i] === o);
+  if (same) return dialog.close();
+  $('picker-go').disabled = true;
+  $('picker-status').textContent = t('pickerOpening');
+  try {
+    await showOwners(chosen);
+    dialog.close();
+  } catch (err) {
+    $('picker-status').textContent = t('couldNotCombine', err.message);
+  } finally {
+    $('picker-go').disabled = false;
+  }
+};
+
+// Draws these owners' graphs together (or one alone): crawls already on screen are
+// reused (the extension's own included, shared or not), the rest come from the storage.
+async function showOwners(owners) {
+  const crawls = await Promise.all(
+    owners.map(async (o) => {
+      if (parts.has(o)) return parts.get(o);
+      const g = await loadGraph(o);
+      if (!g) throw new Error(t('notShared', o));
+      return decodeGraph(g);
+    })
+  );
+  const stored = owners.filter((o) => !parts.has(o) || storedOwners.has(o));
+  const graph = owners.length > 1 ? mergeGraphs(...crawls) : crawls[0];
+  const showing = show(graph, { crawls, stored });
+  fillPeople(graph);
+  await showing;
+  syncUrl();
+}
 $('combine-form').onsubmit = async (e) => {
   e.preventDefault();
   const fail = (text) => {
@@ -909,8 +1020,13 @@ $('combine-form').onsubmit = async (e) => {
   const at = text.search(/#[gso]=/);
   const state = at >= 0 ? parseHash(text.slice(at)) : null;
   if (!state?.g && !state?.s && !state?.o) return fail(t('notALink'));
-  if (state.m.length) return fail(t('alreadyCombined'));
-  if (!shown) return;
+  if (state.m.length && shown) return fail(t('alreadyCombined'));
+  if (!shown) {
+    // nothing on screen to combine with: just open the link
+    dialog.close();
+    location.hash = text.slice(at);
+    return;
+  }
   $('combine-go').disabled = true;
   try {
     let friend;
