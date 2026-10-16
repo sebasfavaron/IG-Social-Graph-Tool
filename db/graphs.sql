@@ -36,11 +36,19 @@ language sql stable security definer set search_path = public, pg_temp as $$
     - pg_total_relation_size('shares')
 $$;
 
--- Saves an owner's graph. only_if_missing: leaves a graph already there alone (copying
--- an old link over must not replace a newer share). Returns whether it was saved.
-create or replace function save_graph(owner_name text, graph_data text, only_if_missing boolean default false)
+-- Saves an owner's graph. Returns whether it was saved.
+-- only_if_missing: copying an old link over, which must not replace a newer share. With
+-- from_share (the old link's id in `shares`) it does replace a graph stored before that
+-- share was made, and the graph keeps the share's date, so old links opened in any order
+-- leave the newest one; without it (links to gists carry no date) only a missing graph
+-- is filled.
+drop function if exists save_graph(text, text, boolean);
+create or replace function save_graph(owner_name text, graph_data text, only_if_missing boolean default false,
+                                      from_share text default null)
 returns boolean
 language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  made timestamptz;
 begin
   if owner_name !~ '^[A-Za-z0-9._]{1,30}$' then
     raise exception 'not an Instagram username: %', owner_name;
@@ -55,7 +63,14 @@ begin
     raise exception 'too many shares in the last hour, try again later';
   end if;
   if only_if_missing then
-    insert into graphs (owner, data) values (owner_name, graph_data) on conflict (owner) do nothing;
+    made := (select created_at from shares where id = from_share);
+    if made is null then
+      insert into graphs (owner, data) values (owner_name, graph_data) on conflict (owner) do nothing;
+    else
+      insert into graphs as g (owner, data, updated_at) values (owner_name, graph_data, made)
+        on conflict (owner) do update set data = excluded.data, updated_at = excluded.updated_at
+        where g.updated_at < excluded.updated_at;
+    end if;
     return found;
   end if;
   insert into graphs (owner, data) values (owner_name, graph_data)
@@ -120,11 +135,11 @@ language sql stable security definer set search_path = public, pg_temp as $$
 $$;
 
 revoke all on function storage_left() from public;
-revoke all on function save_graph(text, text, boolean) from public;
+revoke all on function save_graph(text, text, boolean, text) from public;
 revoke all on function save_people(jsonb, boolean) from public;
 revoke all on function get_graph(text) from public;
 revoke all on function get_people(text[]) from public;
-grant execute on function save_graph(text, text, boolean) to share_client;
+grant execute on function save_graph(text, text, boolean, text) to share_client;
 grant execute on function save_people(jsonb, boolean) to share_client;
 grant execute on function get_graph(text) to share_client;
 grant execute on function get_people(text[]) to share_client;

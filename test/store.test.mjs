@@ -9,16 +9,21 @@ const jpeg = (fill, n) => `data:image/jpeg;base64,${Buffer.alloc(n, fill).toStri
 // Neon's HTTP SQL endpoint, as far as graphs.sql goes, with its upsert rules
 function fakeNeon() {
   const graphs = new Map();
+  const dates = new Map(); // owner -> when the stored graph was shared
+  const shareDates = new Map([['old', 1], ['newer', 50]]); // old share id -> when it was made
+  let clock = 10;
   const people = new Map();
   const calls = [];
   const fetchImpl = async (url, init) => {
     const { query, params } = JSON.parse(init.body);
     calls.push(query);
     const ok = (rows) => new Response(JSON.stringify({ rows }));
-    if (query === 'select save_graph($1, $2, $3)') {
-      const [owner, data, onlyIfMissing] = params;
-      if (onlyIfMissing && graphs.has(owner)) return ok([[false]]);
+    if (query === 'select save_graph($1, $2, $3, $4)') {
+      const [owner, data, onlyIfMissing, fromShare] = params;
+      const made = shareDates.get(fromShare);
+      if (onlyIfMissing && graphs.has(owner) && !(made && made > dates.get(owner))) return ok([[false]]);
       graphs.set(owner, data);
+      dates.set(owner, onlyIfMissing && made ? made : ++clock);
       return ok([[true]]);
     }
     if (query === 'select save_people($1::jsonb, $2)') {
@@ -79,6 +84,17 @@ test('copying an old link over never replaces what is already stored', async () 
   assert.equal(await loadGraph('me', neon), 'NEW');
   assert.equal(await saveGraph({ owner: 'other', g: 'OLD', ids: new Set(['cy']), profiles, photos, onlyIfMissing: true }, neon), true);
   assert.equal((await loadPeople(['cy'], neon)).profiles.cy.name, 'Cy');
+});
+
+test('an old link made after the stored graph replaces it, in whatever order they are opened', async () => {
+  const neon = fakeNeon();
+  await saveGraph({ owner: 'me', g: 'SHARED AT 11', ids: new Set() }, neon);
+  assert.equal(await saveGraph({ owner: 'me', g: 'OLD LINK', ids: new Set(), onlyIfMissing: true, fromShare: 'old' }, neon), false);
+  assert.equal(await saveGraph({ owner: 'me', g: 'NEWER LINK', ids: new Set(), onlyIfMissing: true, fromShare: 'newer' }, neon), true);
+  assert.equal(await loadGraph('me', neon), 'NEWER LINK');
+  // the older one opened afterwards leaves the newer alone
+  assert.equal(await saveGraph({ owner: 'me', g: 'OLD LINK', ids: new Set(), onlyIfMissing: true, fromShare: 'old' }, neon), false);
+  assert.equal(await loadGraph('me', neon), 'NEWER LINK');
 });
 
 test('people go up in batches small enough for the database', async () => {

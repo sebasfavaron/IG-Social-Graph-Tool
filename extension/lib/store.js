@@ -65,13 +65,17 @@ function writeSaved(owner, print) {
 }
 
 // Saves an owner's crawl and the people in it (only those in ids). onlyIfMissing: for
-// copying an old link over; a graph already stored stays, and people only gain what
-// they lack. -> whether the graph was saved (false: one was there already).
-export async function saveGraph({ owner, g, ids, profiles = {}, photos = new Map(), onlyIfMissing = false }, { fetchImpl = fetch } = {}) {
+// copying an old link over; a graph already stored stays unless fromShare (the old
+// link's share id) was made after it, and people only gain what they lack.
+// -> whether the graph was saved (false: a newer one was there already).
+export async function saveGraph(
+  { owner, g, ids, profiles = {}, photos = new Map(), onlyIfMissing = false, fromShare = null },
+  { fetchImpl = fetch } = {}
+) {
   const rows = peopleRows(ids, profiles, photos);
   const print = await fingerprint(g, rows);
   if (!onlyIfMissing && readSaved(owner) === print) return true;
-  const [[saved]] = await sharesQuery('select save_graph($1, $2, $3)', [owner, g, onlyIfMissing], fetchImpl);
+  const [[saved]] = await sharesQuery('select save_graph($1, $2, $3, $4)', [owner, g, onlyIfMissing, fromShare], fetchImpl);
   if (!saved && onlyIfMissing) return false;
   let batch = [];
   let size = 0;

@@ -47,7 +47,7 @@ The database keeps one graph per person and one row per Instagram account. Someo
 
 Links made before shares were stored carry the whole graph after `#g=` (~10 000 characters, usernames only), in a format built for these graphs: each pair of people is stored once with its direction, your own links are two bits per person, and people are numbered friend group by friend group so neighbours get nearby numbers. They still open, as do links to GitHub gists from a short while when shares went there.
 
-Links from before the shared database (`#s=…&k=…`) were encrypted, and only the link holds the key. Opening one copies its graph, names and photos into the database (a combined one is split back into each person's graph), never replacing a newer share, and the address becomes the short `#o=` link.
+Links from before the shared database (`#s=…&k=…`) were encrypted, and only the link holds the key. Opening one copies its graph, names and photos into the database (a combined one is split back into each person's graph), replacing a stored graph only when the link is newer, and the address becomes the short `#o=` link.
 
 The site is the extension's viewer, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it.
 

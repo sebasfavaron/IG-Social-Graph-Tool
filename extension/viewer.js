@@ -717,12 +717,13 @@ async function openStored(owner, partner) {
 }
 
 // Links from before the shared storage: names and photos, encrypted (vault.js). Opening
-// one copies its crawls over (a combined one is split back into each owner's), without
-// replacing anything stored since. -> the owners now stored, or null when it could not.
+// one copies its crawls over (a combined one is split back into each owner's), replacing
+// only graphs stored before that link was made. -> the owners now stored, or null when it
+// could not.
 async function openFullShare(ref, key) {
   return unpackShare(await unseal(await downloadShare(ref), key));
 }
-async function copyOver(full, partner) {
+async function copyOver(full, partner, ref) {
   const graph = await decodeGraph(full.g);
   const owner = graph.username;
   if (!owner) return null;
@@ -736,6 +737,7 @@ async function copyOver(full, partner) {
       profiles: full.profiles,
       photos: full.photos,
       onlyIfMissing: true,
+      fromShare: ref,
     });
   }
   return owners;
@@ -767,7 +769,7 @@ $('combine-form').onsubmit = async (e) => {
     let friendStored = false;
     if (state.s) {
       // an old link: copied over first, then read like any stored one
-      const owners = await copyOver(await openFullShare(state.s, state.k));
+      const owners = await copyOver(await openFullShare(state.s, state.k), null, state.s);
       if (!owners) throw new Error('that link does not say whose graph it is');
       state.o = owners[0];
     }
@@ -812,7 +814,7 @@ async function openShareHash() {
     if (state.s) {
       $('counts').textContent = 'Opening the shared graph…';
       const full = await openFullShare(state.s, state.k);
-      const owners = await copyOver(full, state.m).catch(() => null);
+      const owners = await copyOver(full, state.m, state.s).catch(() => null);
       if (owners) {
         // from now on the address is the short one, read from the shared storage
         const hash = buildHash({ ...state, s: null, o: owners[0] });
