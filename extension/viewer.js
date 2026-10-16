@@ -105,6 +105,7 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
       '. Use search to pick someone; their connections are listed in a panel.'
   );
   $('share').hidden = !shown;
+  updateExplore();
   // someone looking at a shared graph: how to make their own (the extension has it already)
   $('invite').hidden = inExtension || !shown;
   $('combine').hidden = !shown || !username || owners.length >= MAX_OWNERS;
@@ -155,8 +156,16 @@ const isStored = () => parts.size > 0 && [...parts.keys()].every((o) => storedOw
 function currentHash(g) {
   return buildHash({ ...(isStored() ? { o: shown.username } : { g }), ...viewState() });
 }
+// Explore (explore.html, on the site) reads graphs from the shared storage, so it is
+// offered once everything on screen is stored.
+function updateExplore() {
+  const on = !!shown && isStored();
+  $('explore').hidden = !on;
+  if (on) $('explore').href = `${SHARE_BASE_URL}explore.html${buildHash({ o: shown.username, m: shown.partners })}`;
+}
 let syncTimer = null;
 function syncUrl() {
+  updateExplore();
   if (inExtension || (!encoded && !isStored())) return;
   clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {

@@ -134,6 +134,22 @@
       button:hover {
         background: var(--chip-hover);
       }
+      /* a link that sits among the buttons and looks like one */
+      #explore {
+        padding: 4px 9px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--surface-solid);
+        color: inherit;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      #explore:hover {
+        background: var(--chip-hover);
+      }
+      #explore[hidden] {
+        display: none;
+      }
       a {
         color: var(--accent);
       }
@@ -761,13 +777,14 @@
         />
         <ul id="results" role="listbox" aria-label="Matching people" hidden></ul>
       </div>
-      <button id="share" hidden title="Uploads the graph with names and photos, encrypted, and copies a short link. Anyone with the link sees them.">
+      <button id="share" hidden title="Saves the graph with names and photos to the shared storage and copies a short link. Nothing there is private.">
         <span class="wide-only">Copy share link</span><span class="narrow-only">Share</span>
       </button>
       <button id="combine" hidden title="Paste a friend's share link to see both of your circles in one graph">
         <span class="wide-only">Combine with a friend…</span><span class="narrow-only">Combine</span>
       </button>
       <button id="uncombine" hidden title="Go back to one person's graph"><span class="label"></span></button>
+      <a id="explore" hidden target="_blank" rel="noopener" title="Ask these graphs questions in SQL, in a new tab">Explore data</a>
       <button id="theme" aria-label="Switch to dark theme" title="Switch theme">☾</button>
       <span id="hint" class="muted wide-only">Click someone to see who follows whom · Esc clears</span>
     </header>

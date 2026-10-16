@@ -43,6 +43,14 @@ The database keeps one graph per person and one row per Instagram account. Someo
 
 **Combine with a friend…** takes a share link a friend made and draws both graphs as one; nothing new is uploaded. Press it again to add more people, up to five. The key switches from friend groups to circles: one colour for the people only each of you knows, and one for the people in more than one circle (with two people, "in both"). Click a circle to keep it highlighted. The combined link lists the usernames (`#o=you&m=friend,another`), and **@you only** goes back.
 
+### Explore the data
+
+**Explore data** (on any shared graph, or [`explore.html`](https://sebasfavaron.github.io/IG-Social-Graph-Tool/explore.html)) loads one or more shared graphs into a SQLite database inside the page and lets you ask them anything in SQL: who is in more than one circle, whether two people follow each other, every route between two people that avoids a third. It starts with example questions, and usernames in the results open that person in the graph. The tables are `owners`, `people`, `follows`, `circles` and an `edges` view.
+
+Each crawl only sees follows among its owner's own people, so a follow between two people who share no loaded circle is not in the data: "none found" there means "can't see".
+
+It downloads about 300 KB for SQLite ([sql.js](https://sql.js.org) from cdnjs) plus ~35 KB of graphs and ~70 KB of names for three people, and no photos. The extension cannot load scripts from other sites, so the button always opens the page on the site.
+
 ### Older links
 
 Links made before shares were stored carry the whole graph after `#g=` (~10 000 characters, usernames only), in a format built for these graphs: each pair of people is stored once with its direction, your own links are two bits per person, and people are numbered friend group by friend group so neighbours get nearby numbers. They still open, as do links to GitHub gists from a short while when shares went there.
@@ -79,6 +87,7 @@ The site is the extension's viewer, published from `extension/` by [`.github/wor
 | `extension/lib/groups.js` | friend groups by modularity (Louvain) |
 | `extension/lib/groupNames.js` | keeps each friend-group name on its group across crawls |
 | `extension/lib/merge.js` | combines two graphs and tells whose circle each person is in |
+| `extension/explore.html`, `explore.js` | SQL over shared graphs (sql.js), site only |
 | `extension/lib/store.js` | shared database: saves and reads graphs by owner and people by username through Neon's HTTP SQL endpoint |
 | `extension/lib/vault.js` | older encrypted shares: reads them so the viewer can copy them over |
 | `db/shares.sql` | the share storage: table, the two functions, the public role allowed to call only those |

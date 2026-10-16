@@ -103,13 +103,20 @@ export async function loadGraph(owner, { fetchImpl = fetch } = {}) {
 }
 
 // -> { profiles: { user: { name, private, verified } }, photos: Map user -> data URL }
-export async function loadPeople(ids, { fetchImpl = fetch } = {}) {
+// withPhotos false leaves the photos (most of the bytes) in the database.
+export async function loadPeople(ids, { fetchImpl = fetch, withPhotos = true } = {}) {
   const all = [...ids];
   const batches = [];
   for (let i = 0; i < all.length; i += PEOPLE_READ_BATCH) batches.push(all.slice(i, i + PEOPLE_READ_BATCH));
   const results = await Promise.all(
     batches.map((names) =>
-      sharesQuery('select username, name, flags, photo, photo_type from get_people($1)', [names], fetchImpl)
+      sharesQuery(
+        withPhotos
+          ? 'select username, name, flags, photo, photo_type from get_people($1)'
+          : 'select username, name, flags from get_people($1)',
+        [names],
+        fetchImpl
+      )
     )
   );
   const profiles = {};
