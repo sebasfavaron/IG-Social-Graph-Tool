@@ -64,6 +64,7 @@ begin
 end $$;
 
 -- rows: [{ "u": username, "n": name, "f": flags, "p": photo base64, "t": photo type }]
+-- Returns how many people were added or changed.
 -- A missing or empty name or photo keeps the one already stored. only_if_missing: fills
 -- gaps only, for copying old links over.
 create or replace function save_people(rows jsonb, only_if_missing boolean default false)
@@ -89,7 +90,15 @@ begin
     photo = case when only_if_missing then coalesce(p.photo, excluded.photo) else coalesce(excluded.photo, p.photo) end,
     photo_type = case when only_if_missing then coalesce(p.photo_type, excluded.photo_type)
                       else coalesce(excluded.photo_type, p.photo_type) end,
-    updated_at = now();
+    updated_at = now()
+  -- an unchanged person is left alone: rewriting the row would leave the old copy (photo
+  -- and all) behind as dead space until vacuum, on every share
+  where (case when only_if_missing then coalesce(p.name, excluded.name) else coalesce(excluded.name, p.name) end,
+         case when only_if_missing then p.flags else excluded.flags end,
+         case when only_if_missing then coalesce(p.photo, excluded.photo) else coalesce(excluded.photo, p.photo) end,
+         case when only_if_missing then coalesce(p.photo_type, excluded.photo_type)
+              else coalesce(excluded.photo_type, p.photo_type) end)
+        is distinct from (p.name, p.flags, p.photo, p.photo_type);
   get diagnostics saved = row_count;
   return saved;
 end $$;
