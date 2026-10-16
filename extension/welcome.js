@@ -1,4 +1,5 @@
 import { formatDuration } from './lib/format.js';
+import { lang, langButton, t, translateStatic } from './lib/i18n.js';
 
 // Opened once, right after the extension is installed (background.js). Walks someone
 // who has never seen the popup through pinning the icon, logging in and starting.
@@ -8,7 +9,7 @@ const IG_ORIGIN = 'https://www.instagram.com';
 
 async function send(type, extra = {}) {
   const res = await chrome.runtime.sendMessage({ type, ...extra });
-  if (!res?.ok) throw new Error(res?.error || 'No response from the extension.');
+  if (!res?.ok) throw new Error(res?.error || t('w.noResponse'));
   return res.data;
 }
 
@@ -30,14 +31,16 @@ async function checkLogin() {
 }
 
 const STATUS_TEXT = {
-  running: (s) => (s.phase === 'followers' ? 'Listing your followers…' : 'Checking who follows whom…'),
-  paused: () => 'Paused. Press Resume in the extension icon to carry on.',
-  cooldown: (s) => `Instagram asked for a break. It carries on by itself at ${new Date(s.cooldownUntil).toLocaleTimeString()}.`,
-  done: () => 'Done! Your graph is ready.',
-  error: () => 'It stopped.',
+  running: (s) => t(s.phase === 'followers' ? 'w.listing' : 'w.checking'),
+  paused: () => t('w.paused'),
+  cooldown: (s) => t('w.cooldown', new Date(s.cooldownUntil).toLocaleTimeString(lang)),
+  done: () => t('w.done'),
+  error: () => t('w.stopped'),
 };
 
+let last = null; // the state as last drawn, to draw again in another language
 function render(s) {
+  last = s;
   $('before').hidden = !!s;
   $('during').hidden = !s;
   $('start-step').classList.toggle('done', s?.status === 'done');
@@ -47,16 +50,15 @@ function render(s) {
   $('bar').style.width = s.phase === 'followers' ? '3%' : `${target ? (100 * s.done) / target : 0}%`;
   $('eta').textContent =
     s.status === 'done'
-      ? `${target} followers checked.`
+      ? t('w.checkedAll', target)
       : s.phase === 'followers'
-        ? `${s.total} followers found so far.`
-        : `${s.done} of ${target} followers checked` +
-          (s.remaining?.measured ? `, about ${formatDuration(s.remaining.ms)} left.` : '.');
+        ? t('w.found', s.total)
+        : t('w.progress', s.done, target) + (s.remaining?.measured ? t('w.left', formatDuration(s.remaining.ms)) : '.');
   $('error').hidden = !s.error || s.status === 'running' || s.status === 'cooldown';
   $('error').textContent = s.error || '';
   $('close-hint').hidden = s.status === 'done';
   $('view').hidden = !s.links;
-  $('view').textContent = s.status === 'done' ? 'See your graph' : 'See your graph so far';
+  $('view').textContent = t(s.status === 'done' ? 'w.see' : 'w.seeSoFar');
 }
 
 async function refresh() {
@@ -85,6 +87,16 @@ chrome.cookies.onChanged.addListener(({ cookie }) => {
   if (cookie.name === 'ds_user_id' && cookie.domain.endsWith('instagram.com')) checkLogin();
 });
 chrome.storage.onChanged.addListener((changes) => changes.crawl && refresh());
+
+function paint() {
+  translateStatic();
+  document.title = t('w.pageTitle');
+}
+paint();
+langButton($('lang'), () => {
+  paint();
+  render(last);
+});
 
 checkPinned();
 checkLogin();

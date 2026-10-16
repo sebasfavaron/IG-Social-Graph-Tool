@@ -1,9 +1,10 @@
 // The viewer's words in Spanish (the default) and English. The choice is per browser
 // (localStorage "lang"); the toggle sits next to the theme one.
 //
-// Static text in viewer.html carries its key: data-i18n (text), data-i18n-title,
-// data-i18n-placeholder, data-i18n-aria-label. The markup is written in Spanish so the
-// first paint is already right for most people; translateStatic() swaps it.
+// Static text in each page carries its key: data-i18n (text), data-i18n-title,
+// data-i18n-placeholder, data-i18n-aria-label, and data-i18n-html for our own markup.
+// The markup is written in Spanish so the first paint is already right for most people;
+// translateStatic() swaps it.
 
 const plural = (n, one, many) => (n === 1 ? one : many);
 
@@ -355,6 +356,194 @@ const POPUP_AND_EXPLORE = {
 };
 for (const l of Object.keys(STRINGS)) Object.assign(STRINGS[l], POPUP_AND_EXPLORE[l]);
 
+// The install page on the site (i.) and the welcome tab the extension opens once (w.).
+// Keys ending in Html carry markup and go through data-i18n-html.
+const INSTALL_AND_WELCOME = {
+  es: {
+    'i.title': 'Mapeá tus propios seguidores',
+    'i.lead':
+      'Mirá quiénes de tus seguidores se conocen entre sí, con tus grupos de amigos en colores. Instalarlo lleva unos tres minutos. Después mapea tus seguidores solo, y tarda más o menos una hora cada 500.',
+    'i.phoneTitle': 'Esta parte necesita una computadora',
+    'i.phoneText':
+      'El mapeo corre en Chrome, en una Mac o en una computadora con Windows. Mandate esta página y abrila ahí. El grafo que sale después se ve también en el celular.',
+    'i.send': 'Mandarme esta página',
+    'i.copyLink': 'Copiar link',
+    'i.otherTitle': 'Abrí esta página en Chrome',
+    'i.otherTextHtml':
+      'La extensión corre en Chrome, y también en Edge, Brave y Arc. Copiá el link de esta página y pegalo en uno de esos. Si no tenés ninguno, primero <a href="https://www.google.com/chrome/">bajate Chrome</a>.',
+    'i.s1': 'Descargá la extensión',
+    'i.download': 'Descargar IG Social Graph',
+    'i.s1aHtml':
+      'Abrí tu carpeta de Descargas y hacé doble clic en <strong>ig-social-graph.zip</strong>. Eso te deja una carpeta llamada <strong>ig-social-graph</strong>.',
+    'i.s1bHtml':
+      'Mové esa carpeta a <strong>Documentos</strong>. Chrome corre la extensión desde ahí, así que tiene que quedarse donde Chrome la encuentre.',
+    'i.s2': 'Abrí la página de extensiones de Chrome',
+    'i.s2a': 'Chrome abre esta página solo desde su propia barra de direcciones. Copiá la dirección, pegala en una pestaña nueva y apretá Enter.',
+    'i.copy': 'Copiar',
+    'i.copied': 'Copiado',
+    'i.copyThis': 'Copiá esto:',
+    'i.s3': 'Activá el Modo de desarrollador',
+    'i.s3a': 'Es el interruptor de arriba a la derecha de esa página. Le permite a Chrome agregar una extensión desde una carpeta de tu computadora.',
+    'i.s3aEdge': 'Es el interruptor de la columna de la izquierda de esa página. Le permite a Edge agregar una extensión desde una carpeta de tu computadora.',
+    'i.shotExtensions': 'Extensiones',
+    'i.shotSearch': 'Buscar extensiones',
+    'i.shotDevMode': 'Modo de desarrollador',
+    'i.shotLoad': 'Cargar descomprimida',
+    'i.shotPack': 'Empaquetar extensión',
+    'i.shotUpdate': 'Actualizar',
+    'i.s4': 'Hacé clic en “Cargar descomprimida” y elegí la carpeta',
+    'i.s4aHtml':
+      'Aparece una fila nueva de botones. Hacé clic en <strong>Cargar descomprimida</strong>, elegí la carpeta <strong>ig-social-graph</strong> en Documentos y hacé clic en <strong>Seleccionar</strong>.',
+    'i.s5': 'Seguí la pestaña de bienvenida',
+    'i.s5a':
+      'Se abre sola una pestaña de bienvenida. Te muestra cómo dejar el ícono de la extensión a la vista, revisa que tengas Instagram abierto con tu cuenta y tiene el botón que arranca el mapeo.',
+    'i.accountTitle': 'Qué hace con tu cuenta',
+    'i.a1': 'Lee tus listas de seguidores desde tu propia pestaña de Instagram, una página cada seis segundos, como si las fueras scrolleando vos.',
+    'i.a2': 'Nunca publica, sigue, da like ni le escribe a nadie, y nunca ve tu contraseña.',
+    'i.a3Html': 'Lo que junta queda en tu navegador. Sale de ahí solo cuando apretás <strong>Copiar link</strong>.',
+    'i.a4': 'Un link compartido es público: cualquiera que lo tenga ve el grafo, con nombres y fotos.',
+    'i.a5': 'Si Instagram le pide que vaya más despacio, espera y sigue solo.',
+    'i.troubleTitle': 'Si algo se ve distinto',
+    'i.t1q': 'No aparece el botón “Cargar descomprimida”',
+    'i.t1a': 'El Modo de desarrollador sigue apagado. Activá el interruptor de arriba a la derecha de la página de extensiones.',
+    'i.t2q': 'Chrome dice que falta el archivo de manifiesto o que no se puede leer',
+    'i.t2aHtml':
+      'Elegiste una carpeta de más arriba, o el zip. Abrí la carpeta que elegiste: la correcta tiene un archivo <code>manifest.json</code> directamente adentro.',
+    'i.t3q': 'Chrome pregunta si querés inhabilitar las extensiones en modo de desarrollador',
+    'i.t3a': 'Algunas versiones de Chrome lo preguntan al abrirse. Cerrá el mensaje con la ✕ y la extensión sigue funcionando.',
+    'i.t4q': 'La extensión desapareció',
+    'i.t4a': 'La carpeta se movió o se borró. Volvé a ponerla en Documentos y repetí el paso 4. Lo que ya había juntado se conserva.',
+    'i.footerHtml':
+      'Gratis y de código abierto, <a href="https://github.com/sebasfavaron/IG-Social-Graph-Tool">en GitHub</a>. <a href="./">Mirá cómo se ve un grafo</a>.',
+    'i.shareText': 'Para abrir en la compu, en Chrome:',
+
+    'w.pageTitle': 'Bienvenida a IG Social Graph',
+    'w.title': 'Ya casi está',
+    'w.lead': 'Dos chequeos rápidos y un botón. Después corre solo.',
+    'w.pinTitle': 'Dejá el ícono a la vista',
+    'w.pinTextHtml':
+      'Hacé clic en la pieza de rompecabezas <span class="icon" aria-label="pieza de rompecabezas">🧩</span> arriba a la derecha de Chrome, y después en el pin al lado de <strong>IG Social Graph</strong>. Su ícono <span class="icon"><img src="icon128.png" alt="" /></span> queda en la barra, y ahí vas a ver cuánto le falta.',
+    'w.pinned': 'Listo, el ícono está en tu barra.',
+    'w.loginTitle': 'Tené Instagram abierto con tu cuenta en este navegador',
+    'w.loginText': 'Usa tu propia sesión de Instagram, así que necesita que hayas entrado acá, en Chrome.',
+    'w.openIg': 'Abrir Instagram para entrar',
+    'w.notices': 'Esta página se da cuenta sola cuando entraste.',
+    'w.loggedIn': 'Entraste a Instagram.',
+    'w.mapTitle': 'Mapeá tus seguidores',
+    'w.b1': 'Tarda más o menos una hora cada 500 seguidores. Ese ritmo lo pone Instagram.',
+    'w.b2': 'Dejá Chrome abierto y usalo como siempre. Podés cerrar esta pestaña.',
+    'w.b3': 'Si Instagram le pide que vaya más despacio, espera y sigue solo.',
+    'w.start': 'Empezar',
+    'w.logInFirst': 'Primero entrá a Instagram.',
+    'w.closeHint': 'Podés cerrar esta pestaña. El ícono de la barra muestra cuánto avanzó.',
+    'w.listing': 'Listando tus seguidores…',
+    'w.checking': 'Revisando quién sigue a quién…',
+    'w.paused': 'En pausa. Apretá Seguir en el ícono de la extensión para continuar.',
+    'w.cooldown': (time) => `Instagram pidió un descanso. Sigue solo a las ${time}.`,
+    'w.done': '¡Listo! Ya podés ver tu grafo.',
+    'w.stopped': 'Se detuvo.',
+    'w.checkedAll': (n) => `${n} seguidores revisados.`,
+    'w.found': (n) => `${n} seguidores encontrados hasta ahora.`,
+    'w.progress': (done, target) => `${done} de ${target} seguidores revisados`,
+    'w.left': (d) => `, faltan más o menos ${d}.`,
+    'w.see': 'Ver tu grafo',
+    'w.seeSoFar': 'Ver tu grafo hasta ahora',
+    'w.noResponse': 'La extensión no respondió.',
+  },
+  en: {
+    'i.title': 'Map your own followers',
+    'i.lead':
+      'See who among your followers know each other, with your friend groups as coloured clusters. Setting it up takes about three minutes. Then it maps your followers on its own, which takes about an hour for every 500.',
+    'i.phoneTitle': 'This part needs a computer',
+    'i.phoneText':
+      'The mapping runs in Chrome on a Mac or a Windows computer. Send this page to yourself and open it there. The graph you get works on your phone too.',
+    'i.send': 'Send this page to myself',
+    'i.copyLink': 'Copy link',
+    'i.otherTitle': 'Open this page in Chrome',
+    'i.otherTextHtml':
+      'The extension runs in Chrome, and also in Edge, Brave and Arc. Copy this page\'s link and paste it in one of those. If you don\'t have any, <a href="https://www.google.com/chrome/">get Chrome</a> first.',
+    'i.s1': 'Download the extension',
+    'i.download': 'Download IG Social Graph',
+    'i.s1aHtml':
+      'Open your Downloads and double-click <strong>ig-social-graph.zip</strong>. That gives you a folder called <strong>ig-social-graph</strong>.',
+    'i.s1bHtml':
+      'Move that folder to <strong>Documents</strong>. Chrome runs the extension from it, so it has to stay where Chrome can find it.',
+    'i.s2': "Open Chrome's extensions page",
+    'i.s2a': 'Chrome only opens this page from its own address bar. Copy the address, paste it in a new tab and press Enter.',
+    'i.copy': 'Copy',
+    'i.copied': 'Copied',
+    'i.copyThis': 'Copy this:',
+    'i.s3': 'Turn on Developer mode',
+    'i.s3a': "It's the switch in the top-right corner of that page. It lets Chrome add an extension from a folder on your computer.",
+    'i.s3aEdge': "It's the switch in the left-hand column of that page. It lets Edge add an extension from a folder on your computer.",
+    'i.shotExtensions': 'Extensions',
+    'i.shotSearch': 'Search extensions',
+    'i.shotDevMode': 'Developer mode',
+    'i.shotLoad': 'Load unpacked',
+    'i.shotPack': 'Pack extension',
+    'i.shotUpdate': 'Update',
+    'i.s4': 'Click “Load unpacked” and pick the folder',
+    'i.s4aHtml':
+      'A new row of buttons appears. Click <strong>Load unpacked</strong>, choose the <strong>ig-social-graph</strong> folder in Documents and click <strong>Select</strong>.',
+    'i.s5': 'Follow the welcome tab',
+    'i.s5a':
+      "A welcome tab opens by itself. It shows you how to keep the extension's icon in view, checks that you're logged in to Instagram, and has the button that starts the mapping.",
+    'i.accountTitle': 'What it does with your account',
+    'i.a1': 'It reads your followers lists from your own logged-in Instagram tab, one page every six seconds, the way you would scroll them.',
+    'i.a2': 'It never posts, follows, likes or messages anyone, and it never sees your password.',
+    'i.a3Html': 'What it collects stays in your browser. It leaves only when you press <strong>Copy share link</strong>.',
+    'i.a4': 'A share link is public: anyone who has it sees the graph, with names and photos.',
+    'i.a5': 'If Instagram asks it to slow down, it waits and carries on by itself.',
+    'i.troubleTitle': 'If something looks different',
+    'i.t1q': 'There is no “Load unpacked” button',
+    'i.t1a': 'Developer mode is still off. Turn on the switch in the top-right corner of the extensions page.',
+    'i.t2q': 'Chrome says “Manifest file is missing or unreadable”',
+    'i.t2aHtml':
+      "The folder you picked is one level too high, or it's the zip itself. Open the folder you picked: the right one has a file called <code>manifest.json</code> directly inside it.",
+    'i.t3q': 'Chrome asks to “Disable developer mode extensions”',
+    'i.t3a': 'Some versions of Chrome ask this when they start. Close the message with ✕, and the extension keeps working.',
+    'i.t4q': 'The extension disappeared',
+    'i.t4a': 'The folder was moved or deleted. Put it back in Documents and do step 4 again. What it collected is kept.',
+    'i.footerHtml':
+      'Free and open source, <a href="https://github.com/sebasfavaron/IG-Social-Graph-Tool">on GitHub</a>. <a href="./">See what a graph looks like</a>.',
+    'i.shareText': 'Open this on my computer, in Chrome:',
+
+    'w.pageTitle': 'Welcome to IG Social Graph',
+    'w.title': "You're almost there",
+    'w.lead': 'Two quick checks, then one button. After that it runs on its own.',
+    'w.pinTitle': 'Keep the icon where you can see it',
+    'w.pinTextHtml':
+      'Click the puzzle piece <span class="icon" aria-label="puzzle piece">🧩</span> at the top right of Chrome, then the pin next to <strong>IG Social Graph</strong>. Its icon <span class="icon"><img src="icon128.png" alt="" /></span> stays in the toolbar, and that\'s where you\'ll see how far along it is.',
+    'w.pinned': 'Pinned. The icon is in your toolbar.',
+    'w.loginTitle': 'Be logged in to Instagram in this browser',
+    'w.loginText': 'It uses your own Instagram session, so it needs you logged in here, in Chrome.',
+    'w.openIg': 'Open Instagram to log in',
+    'w.notices': "This page notices on its own once you're in.",
+    'w.loggedIn': "You're logged in.",
+    'w.mapTitle': 'Map your followers',
+    'w.b1': 'It takes about an hour for every 500 followers. Instagram sets that pace.',
+    'w.b2': 'Keep Chrome open and use it as usual. You can close this tab.',
+    'w.b3': 'If Instagram asks it to slow down, it waits and carries on by itself.',
+    'w.start': 'Start',
+    'w.logInFirst': 'Log in to Instagram first.',
+    'w.closeHint': 'You can close this tab. The icon in the toolbar shows how far along it is.',
+    'w.listing': 'Listing your followers…',
+    'w.checking': 'Checking who follows whom…',
+    'w.paused': 'Paused. Press Resume in the extension icon to carry on.',
+    'w.cooldown': (time) => `Instagram asked for a break. It carries on by itself at ${time}.`,
+    'w.done': 'Done! Your graph is ready.',
+    'w.stopped': 'It stopped.',
+    'w.checkedAll': (n) => `${n} followers checked.`,
+    'w.found': (n) => `${n} followers found so far.`,
+    'w.progress': (done, target) => `${done} of ${target} followers checked`,
+    'w.left': (d) => `, about ${d} left.`,
+    'w.see': 'See your graph',
+    'w.seeSoFar': 'See your graph so far',
+    'w.noResponse': 'No response from the extension.',
+  },
+};
+for (const l of Object.keys(STRINGS)) Object.assign(STRINGS[l], INSTALL_AND_WELCOME[l]);
+
 // The EN/ES button on each page: shows the language it switches to.
 export function langButton(button, onChange) {
   const paint = () => {
@@ -399,6 +588,8 @@ export function setLang(next) {
 const ATTRIBUTES = ['title', 'placeholder', 'aria-label'];
 export function translateStatic(root = document) {
   for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  // our own strings only, never anything a viewer typed
+  for (const el of root.querySelectorAll('[data-i18n-html]')) el.innerHTML = t(el.dataset.i18nHtml);
   for (const attr of ATTRIBUTES) {
     for (const el of root.querySelectorAll(`[data-i18n-${attr}]`)) el.setAttribute(attr, t(el.getAttribute(`data-i18n-${attr}`)));
   }

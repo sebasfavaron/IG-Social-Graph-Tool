@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Map your own followers</title>
+    <title>Mapeá tus propios seguidores</title>
     <meta name="description" content="Set up the IG Social Graph extension in Chrome and see your friend groups as a graph." />
     <link rel="icon" href="icon128.png" />
     <script>
@@ -69,6 +69,10 @@
         padding: 32px 16px 64px;
       }
       h1 {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
         font-size: 28px;
         line-height: 1.2;
         margin: 0 0 8px;
@@ -117,6 +121,12 @@
       .btn:focus-visible {
         outline: 3px solid var(--accent);
         outline-offset: 2px;
+      }
+      #lang {
+        padding: 3px 10px;
+        font-size: 13px;
+        flex: none;
+        margin-top: 4px;
       }
       .note {
         border: 1px solid var(--line);
@@ -279,137 +289,144 @@
   </head>
   <body>
     <main>
-      <h1>Map your own followers</h1>
-      <p class="lead">
-        See who among your followers know each other, with your friend groups as coloured clusters. Setting it
-        up takes about three minutes. Then it maps your followers on its own, which takes about an hour for
-        every 500.
+      <h1><span data-i18n="i.title">Mapeá tus propios seguidores</span> <button class="btn" id="lang">EN</button></h1>
+      <p class="lead" data-i18n="i.lead">
+        Mirá quiénes de tus seguidores se conocen entre sí, con tus grupos de amigos en colores. Instalarlo lleva unos
+        tres minutos. Después mapea tus seguidores solo, y tarda más o menos una hora cada 500.
       </p>
 
       <!-- shown on phones and tablets -->
       <section id="on-phone" class="note" hidden>
-        <h2>This part needs a computer</h2>
-        <p>
-          The mapping runs in Chrome on a Mac or a Windows computer. Send this page to yourself and open it
-          there. The graph you get works on your phone too.
+        <h2 data-i18n="i.phoneTitle">Esta parte necesita una computadora</h2>
+        <p data-i18n="i.phoneText">
+          El mapeo corre en Chrome, en una Mac o en una computadora con Windows. Mandate esta página y abrila ahí.
+          El grafo que sale después se ve también en el celular.
         </p>
         <div class="row">
-          <button class="btn primary" id="send">Send this page to myself</button>
-          <button class="btn" data-copy-page>Copy link</button>
+          <button class="btn primary" id="send" data-i18n="i.send">Mandarme esta página</button>
+          <button class="btn" data-copy-page data-i18n="i.copyLink">Copiar link</button>
         </div>
       </section>
 
       <!-- shown in Safari, Firefox and other browsers that can't load it -->
       <section id="other-browser" class="note" hidden>
-        <h2>Open this page in Chrome</h2>
-        <p>
-          The extension runs in Chrome, and also in Edge, Brave and Arc. Copy this page's link and paste it in
-          one of those. If you don't have any, <a href="https://www.google.com/chrome/">get Chrome</a> first.
+        <h2 data-i18n="i.otherTitle">Abrí esta página en Chrome</h2>
+        <p data-i18n-html="i.otherTextHtml">
+          La extensión corre en Chrome, y también en Edge, Brave y Arc. Copiá el link de esta página y pegalo en
+          uno de esos. Si no tenés ninguno, primero <a href="https://www.google.com/chrome/">bajate Chrome</a>.
         </p>
-        <div class="row"><button class="btn primary" data-copy-page>Copy link</button></div>
+        <div class="row"><button class="btn primary" data-copy-page data-i18n="i.copyLink">Copiar link</button></div>
       </section>
 
       <ol class="steps" id="steps">
         <li>
-          <h2>Download the extension</h2>
-          <p><a class="btn primary" id="download" href="ig-social-graph.zip" download>Download IG Social Graph</a></p>
+          <h2 data-i18n="i.s1">Descargá la extensión</h2>
           <p>
-            Open your Downloads and double-click <strong>ig-social-graph.zip</strong>. That gives you a folder
-            called <strong>ig-social-graph</strong>.
+            <a class="btn primary" id="download" href="ig-social-graph.zip" download data-i18n="i.download">Descargar IG Social Graph</a>
           </p>
-          <p>
-            Move that folder to <strong>Documents</strong>. Chrome runs the extension from it, so it has to stay
-            where Chrome can find it.
+          <p data-i18n-html="i.s1aHtml">
+            Abrí tu carpeta de Descargas y hacé doble clic en <strong>ig-social-graph.zip</strong>. Eso te deja una
+            carpeta llamada <strong>ig-social-graph</strong>.
+          </p>
+          <p data-i18n-html="i.s1bHtml">
+            Mové esa carpeta a <strong>Documentos</strong>. Chrome corre la extensión desde ahí, así que tiene que
+            quedarse donde Chrome la encuentre.
           </p>
         </li>
 
         <li>
-          <h2>Open Chrome's extensions page</h2>
-          <p>Chrome only opens this page from its own address bar. Copy the address, paste it in a new tab and press Enter.</p>
+          <h2 data-i18n="i.s2">Abrí la página de extensiones de Chrome</h2>
+          <p data-i18n="i.s2a">
+            Chrome abre esta página solo desde su propia barra de direcciones. Copiá la dirección, pegala en una
+            pestaña nueva y apretá Enter.
+          </p>
           <div class="copy">
             <span class="addr" id="ext-addr">chrome://extensions</span>
-            <button class="btn" id="copy-addr">Copy</button>
+            <button class="btn" id="copy-addr" data-i18n="i.copy">Copiar</button>
           </div>
         </li>
 
         <li>
-          <h2>Turn on Developer mode</h2>
-          <p id="devmode-where">
-            It's the switch in the top-right corner of that page. It lets Chrome add an extension from a folder on
-            your computer.
+          <h2 data-i18n="i.s3">Activá el Modo de desarrollador</h2>
+          <p id="devmode-where" data-i18n="i.s3a">
+            Es el interruptor de arriba a la derecha de esa página. Le permite a Chrome agregar una extensión desde
+            una carpeta de tu computadora.
           </p>
           <div class="shot" aria-hidden="true">
-            <div class="bar"><strong>Extensions</strong><span style="margin-left: auto"></span></div>
+            <div class="bar"><strong data-i18n="i.shotExtensions">Extensiones</strong></div>
             <div class="body">
-              <span class="muted">Search extensions</span>
-              <span class="switch ring-soft">Developer mode <i></i></span>
+              <span class="muted" data-i18n="i.shotSearch">Buscar extensiones</span>
+              <span class="switch ring-soft"><span data-i18n="i.shotDevMode">Modo de desarrollador</span> <i></i></span>
             </div>
           </div>
         </li>
 
         <li>
-          <h2>Click “Load unpacked” and pick the folder</h2>
-          <p>
-            A new row of buttons appears. Click <strong>Load unpacked</strong>, choose the
-            <strong>ig-social-graph</strong> folder in Documents and click <strong>Select</strong>.
+          <h2 data-i18n="i.s4">Hacé clic en “Cargar descomprimida” y elegí la carpeta</h2>
+          <p data-i18n-html="i.s4aHtml">
+            Aparece una fila nueva de botones. Hacé clic en <strong>Cargar descomprimida</strong>, elegí la carpeta
+            <strong>ig-social-graph</strong> en Documentos y hacé clic en <strong>Seleccionar</strong>.
           </p>
           <div class="shot" aria-hidden="true">
             <div class="body" style="justify-content: flex-start">
-              <span class="fake ring">Load unpacked</span>
-              <span class="fake">Pack extension</span>
-              <span class="fake">Update</span>
+              <span class="fake ring" data-i18n="i.shotLoad">Cargar descomprimida</span>
+              <span class="fake" data-i18n="i.shotPack">Empaquetar extensión</span>
+              <span class="fake" data-i18n="i.shotUpdate">Actualizar</span>
             </div>
           </div>
         </li>
 
         <li>
-          <h2>Follow the welcome tab</h2>
-          <p>
-            A welcome tab opens by itself. It shows you how to keep the extension's icon in view, checks that
-            you're logged in to Instagram, and has the button that starts the mapping.
+          <h2 data-i18n="i.s5">Seguí la pestaña de bienvenida</h2>
+          <p data-i18n="i.s5a">
+            Se abre sola una pestaña de bienvenida. Te muestra cómo dejar el ícono de la extensión a la vista, revisa
+            que tengas Instagram abierto con tu cuenta y tiene el botón que arranca el mapeo.
           </p>
         </li>
       </ol>
 
-      <h2>What it does with your account</h2>
+      <h2 data-i18n="i.accountTitle">Qué hace con tu cuenta</h2>
       <ul class="never">
-        <li>It reads your followers lists from your own logged-in Instagram tab, one page every six seconds, the way you would scroll them.</li>
-        <li>It never posts, follows, likes or messages anyone, and it never sees your password.</li>
-        <li>What it collects stays in your browser. It leaves only when you press <strong>Copy share link</strong>.</li>
-        <li>A share link is public: anyone who has it sees the graph, with names and photos.</li>
-        <li>If Instagram asks it to slow down, it waits and carries on by itself.</li>
+        <li data-i18n="i.a1">Lee tus listas de seguidores desde tu propia pestaña de Instagram, una página cada seis segundos, como si las fueras scrolleando vos.</li>
+        <li data-i18n="i.a2">Nunca publica, sigue, da like ni le escribe a nadie, y nunca ve tu contraseña.</li>
+        <li data-i18n-html="i.a3Html">Lo que junta queda en tu navegador. Sale de ahí solo cuando apretás <strong>Copiar link</strong>.</li>
+        <li data-i18n="i.a4">Un link compartido es público: cualquiera que lo tenga ve el grafo, con nombres y fotos.</li>
+        <li data-i18n="i.a5">Si Instagram le pide que vaya más despacio, espera y sigue solo.</li>
       </ul>
 
       <div id="trouble">
-      <h2>If something looks different</h2>
-      <details>
-        <summary>There is no “Load unpacked” button</summary>
-        <p>Developer mode is still off. Turn on the switch in the top-right corner of the extensions page.</p>
-      </details>
-      <details>
-        <summary>Chrome says “Manifest file is missing or unreadable”</summary>
-        <p>
-          The folder you picked is one level too high, or it's the zip itself. Open the folder you picked: the
-          right one has a file called <code>manifest.json</code> directly inside it.
-        </p>
-      </details>
-      <details>
-        <summary>Chrome asks to “Disable developer mode extensions”</summary>
-        <p>Some versions of Chrome ask this when they start. Close the message with ✕, and the extension keeps working.</p>
-      </details>
-      <details>
-        <summary>The extension disappeared</summary>
-        <p>The folder was moved or deleted. Put it back in Documents and do step 4 again. What it collected is kept.</p>
-      </details>
+        <h2 data-i18n="i.troubleTitle">Si algo se ve distinto</h2>
+        <details>
+          <summary data-i18n="i.t1q">No aparece el botón “Cargar descomprimida”</summary>
+          <p data-i18n="i.t1a">El Modo de desarrollador sigue apagado. Activá el interruptor de arriba a la derecha de la página de extensiones.</p>
+        </details>
+        <details>
+          <summary data-i18n="i.t2q">Chrome dice que falta el archivo de manifiesto o que no se puede leer</summary>
+          <p data-i18n-html="i.t2aHtml">
+            Elegiste una carpeta de más arriba, o el zip. Abrí la carpeta que elegiste: la correcta tiene un archivo
+            <code>manifest.json</code> directamente adentro.
+          </p>
+        </details>
+        <details>
+          <summary data-i18n="i.t3q">Chrome pregunta si querés inhabilitar las extensiones en modo de desarrollador</summary>
+          <p data-i18n="i.t3a">Algunas versiones de Chrome lo preguntan al abrirse. Cerrá el mensaje con la ✕ y la extensión sigue funcionando.</p>
+        </details>
+        <details>
+          <summary data-i18n="i.t4q">La extensión desapareció</summary>
+          <p data-i18n="i.t4a">La carpeta se movió o se borró. Volvé a ponerla en Documentos y repetí el paso 4. Lo que ya había juntado se conserva.</p>
+        </details>
       </div>
 
-      <footer class="muted">
-        Free and open source, <a href="https://github.com/sebasfavaron/IG-Social-Graph-Tool">on GitHub</a>.
-        <a href="./">See what a graph looks like</a>.
+      <footer class="muted" data-i18n-html="i.footerHtml">
+        Gratis y de código abierto, <a href="https://github.com/sebasfavaron/IG-Social-Graph-Tool">en GitHub</a>.
+        <a href="./">Mirá cómo se ve un grafo</a>.
       </footer>
     </main>
 
-    <script>
+    <script type="module">
+      import { langButton, t, translateStatic } from './lib/i18n.js';
+
+      const $ = (id) => document.getElementById(id);
       const ua = navigator.userAgent;
       const brands = (navigator.userAgentData?.brands || []).map((b) => b.brand);
       // iPads report a Mac user agent, so touch points tell them apart
@@ -421,34 +438,38 @@
       const edge = /Edg\//.test(ua) || brands.includes('Microsoft Edge');
 
       if (phone) {
-        document.getElementById('on-phone').hidden = false;
-        document.getElementById('steps').hidden = true;
-        document.getElementById('trouble').hidden = true;
+        $('on-phone').hidden = false;
+        $('steps').hidden = true;
+        $('trouble').hidden = true;
       } else if (!chromium) {
-        document.getElementById('other-browser').hidden = false;
+        $('other-browser').hidden = false;
       }
       if (edge) {
-        document.getElementById('ext-addr').textContent = 'edge://extensions';
-        document.getElementById('devmode-where').textContent =
-          "It's the switch in the left-hand column of that page. It lets Edge add an extension from a folder on your computer.";
+        $('ext-addr').textContent = 'edge://extensions';
+        $('devmode-where').dataset.i18n = 'i.s3aEdge';
       }
 
+      function paint() {
+        translateStatic();
+        document.title = t('i.title');
+      }
+      paint();
+      langButton($('lang'), paint);
+
       async function copy(text, button) {
-        const label = button.textContent;
         try {
           await navigator.clipboard.writeText(text);
-          button.textContent = 'Copied';
+          button.textContent = t('i.copied');
         } catch (_) {
-          prompt('Copy this:', text);
+          prompt(t('i.copyThis'), text);
         }
-        setTimeout(() => (button.textContent = label), 2000);
+        setTimeout(() => (button.textContent = t(button.dataset.i18n)), 2000);
       }
       const pageUrl = location.href.split('#')[0];
-      document.getElementById('copy-addr').onclick = (e) =>
-        copy(document.getElementById('ext-addr').textContent, e.currentTarget);
+      $('copy-addr').onclick = (e) => copy($('ext-addr').textContent, e.currentTarget);
       for (const b of document.querySelectorAll('[data-copy-page]')) b.onclick = () => copy(pageUrl, b);
-      document.getElementById('send').onclick = async () => {
-        const data = { title: 'Map your own followers', text: 'Open this on my computer, in Chrome:', url: pageUrl };
+      $('send').onclick = async () => {
+        const data = { title: t('i.title'), text: t('i.shareText'), url: pageUrl };
         if (navigator.share) {
           try {
             await navigator.share(data);

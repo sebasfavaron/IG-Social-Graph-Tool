@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Welcome to IG Social Graph</title>
+    <title>Bienvenida a IG Social Graph</title>
     <link rel="icon" href="icon128.png" />
     <style>
       :root {
@@ -47,6 +47,10 @@
         padding: 40px 16px 64px;
       }
       h1 {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
         font-size: 28px;
         line-height: 1.2;
         margin: 0 0 8px;
@@ -130,6 +134,12 @@
         outline: 3px solid var(--accent);
         outline-offset: 2px;
       }
+      #lang {
+        padding: 3px 10px;
+        margin: 4px 0 0;
+        font-size: 13px;
+        flex: none;
+      }
       .icon {
         display: inline-grid;
         place-items: center;
@@ -169,56 +179,56 @@
   </head>
   <body>
     <main>
-      <h1>You're almost there</h1>
-      <p class="lead">Two quick checks, then one button. After that it runs on its own.</p>
+      <h1><span data-i18n="w.title">Ya casi está</span> <button class="btn" id="lang">EN</button></h1>
+      <p class="lead" data-i18n="w.lead">Dos chequeos rápidos y un botón. Después corre solo.</p>
 
       <section class="step" id="pin-step">
         <div class="mark" aria-hidden="true">1</div>
         <div>
-          <h2>Keep the icon where you can see it</h2>
-          <p class="todo">
-            Click the puzzle piece <span class="icon" aria-label="puzzle piece">🧩</span> at the top right of
-            Chrome, then the pin next to <strong>IG Social Graph</strong>. Its icon
-            <span class="icon"><img src="icon128.png" alt="" /></span> stays in the toolbar, and that's where you'll
-            see how far along it is.
+          <h2 data-i18n="w.pinTitle">Dejá el ícono a la vista</h2>
+          <p class="todo" data-i18n-html="w.pinTextHtml">
+            Hacé clic en la pieza de rompecabezas <span class="icon" aria-label="pieza de rompecabezas">🧩</span>
+            arriba a la derecha de Chrome, y después en el pin al lado de <strong>IG Social Graph</strong>. Su ícono
+            <span class="icon"><img src="icon128.png" alt="" /></span> queda en la barra, y ahí vas a ver cuánto le
+            falta.
           </p>
-          <p class="ok">Pinned. The icon is in your toolbar.</p>
+          <p class="ok" data-i18n="w.pinned">Listo, el ícono está en tu barra.</p>
         </div>
       </section>
 
       <section class="step" id="login-step">
         <div class="mark" aria-hidden="true">2</div>
         <div>
-          <h2>Be logged in to Instagram in this browser</h2>
+          <h2 data-i18n="w.loginTitle">Tené Instagram abierto con tu cuenta en este navegador</h2>
           <div class="todo">
-            <p>It uses your own Instagram session, so it needs you logged in here, in Chrome.</p>
-            <button class="btn" id="open-ig">Open Instagram to log in</button>
-            <p class="muted" style="margin-top: 8px">This page notices on its own once you're in.</p>
+            <p data-i18n="w.loginText">Usa tu propia sesión de Instagram, así que necesita que hayas entrado acá, en Chrome.</p>
+            <button class="btn" id="open-ig" data-i18n="w.openIg">Abrir Instagram para entrar</button>
+            <p class="muted" style="margin-top: 8px" data-i18n="w.notices">Esta página se da cuenta sola cuando entraste.</p>
           </div>
-          <p class="ok">You're logged in.</p>
+          <p class="ok" data-i18n="w.loggedIn">Entraste a Instagram.</p>
         </div>
       </section>
 
       <section class="step" id="start-step">
         <div class="mark" aria-hidden="true">3</div>
         <div>
-          <h2>Map your followers</h2>
+          <h2 data-i18n="w.mapTitle">Mapeá tus seguidores</h2>
           <div id="before">
             <ul>
-              <li>It takes about an hour for every 500 followers. Instagram sets that pace.</li>
-              <li>Keep Chrome open and use it as usual. You can close this tab.</li>
-              <li>If Instagram asks it to slow down, it waits and carries on by itself.</li>
+              <li data-i18n="w.b1">Tarda más o menos una hora cada 500 seguidores. Ese ritmo lo pone Instagram.</li>
+              <li data-i18n="w.b2">Dejá Chrome abierto y usalo como siempre. Podés cerrar esta pestaña.</li>
+              <li data-i18n="w.b3">Si Instagram le pide que vaya más despacio, espera y sigue solo.</li>
             </ul>
-            <button class="btn primary big" id="start" disabled>Start</button>
-            <p class="muted" id="start-hint" style="margin-top: 8px">Log in to Instagram first.</p>
+            <button class="btn primary big" id="start" disabled data-i18n="w.start">Empezar</button>
+            <p class="muted" id="start-hint" style="margin-top: 8px" data-i18n="w.logInFirst">Primero entrá a Instagram.</p>
           </div>
           <div id="during" hidden>
             <p id="status" aria-live="polite"></p>
             <div class="bar"><div id="bar"></div></div>
             <p class="muted" id="eta"></p>
             <p class="error" id="error" hidden></p>
-            <p class="muted" id="close-hint">You can close this tab. The icon in the toolbar shows how far along it is.</p>
-            <button class="btn primary" id="view" hidden>See your graph</button>
+            <p class="muted" id="close-hint" data-i18n="w.closeHint">Podés cerrar esta pestaña. El ícono de la barra muestra cuánto avanzó.</p>
+            <button class="btn primary" id="view" hidden></button>
           </div>
         </div>
       </section>
