@@ -198,26 +198,30 @@ function fillIn(text) {
     .replaceAll('{b}', b);
 }
 
+// The questions, with these owners' names in; "Your own SQL" shows up once the SQL is
+// edited by hand. Loading other graphs starts again on the most telling question.
+const OWN = 'own';
 function renderExamples() {
   const usable = EXAMPLES.filter((e) => owners.length >= e.needs);
-  $('examples').replaceChildren(
-    new Option('Example questions…', ''),
-    ...usable.map((e) => new Option(fillIn(e.title), EXAMPLES.indexOf(e)))
-  );
-  // start on the most telling question these owners allow
-  if (!$('sql').value.trim()) pick([5, 3, 0].map((i) => EXAMPLES[i]).find((e) => usable.includes(e)));
+  $('examples').replaceChildren(...usable.map((e) => new Option(fillIn(e.title), EXAMPLES.indexOf(e))));
+  pick([5, 3, 0].map((i) => EXAMPLES[i]).find((e) => usable.includes(e)));
 }
 
 function pick(example) {
   if (!example) return;
+  $('examples').querySelector(`option[value="${OWN}"]`)?.remove();
+  $('examples').value = EXAMPLES.indexOf(example);
   $('sql').value = fillIn(example.sql);
   run();
 }
 
 $('examples').onchange = () => {
   const example = EXAMPLES[$('examples').value];
-  $('examples').value = '';
-  pick(example);
+  if (example) pick(example);
+};
+$('sql').oninput = () => {
+  if (!$('examples').querySelector(`option[value="${OWN}"]`)) $('examples').append(new Option('Your own SQL', OWN));
+  $('examples').value = OWN;
 };
 
 // ---- running ----------------------------------------------------------------------
@@ -253,6 +257,8 @@ function run() {
   renderTable(columns, values.slice(0, ROW_LIMIT));
 }
 
+const IG_ICON =
+  '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="4" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="11.8" cy="4.2" r="0.9" fill="currentColor"/></svg>';
 let known = new Set(); // usernames, so cells holding one become links
 function renderTable(columns, rows) {
   if (db) known = new Set(db.exec('select username from people')[0]?.values.flat() || []);
@@ -265,8 +271,18 @@ function renderTable(columns, rows) {
         const td = document.createElement('td');
         if (typeof value === 'number') td.className = 'num';
         if (typeof value === 'string' && known.has(value)) {
+          // the name opens them in the graph; the icon after it, on Instagram
           const hash = buildHash({ o: owners[0], m: owners.slice(1), p: value });
-          td.append(Object.assign(document.createElement('a'), { href: new URL(hash, viewerUrl).href, textContent: value }));
+          const ig = Object.assign(document.createElement('a'), {
+            className: 'ig',
+            href: `https://www.instagram.com/${encodeURIComponent(value)}/`,
+            target: '_blank',
+            rel: 'noopener',
+            title: `Open @${value} on Instagram`,
+            innerHTML: IG_ICON,
+          });
+          ig.setAttribute('aria-label', `Open @${value} on Instagram (new tab)`);
+          td.append(Object.assign(document.createElement('a'), { href: new URL(hash, viewerUrl).href, textContent: value }), ig);
         } else {
           td.textContent = value ?? '';
         }

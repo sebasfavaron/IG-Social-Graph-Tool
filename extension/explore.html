@@ -109,16 +109,64 @@
         border-radius: 6px;
         background: var(--bg);
       }
-      .layout {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 260px;
-        gap: 16px;
-        margin-top: 14px;
+      .ask {
+        margin-top: 18px;
       }
-      @media (max-width: 760px) {
-        .layout {
-          grid-template-columns: minmax(0, 1fr);
-        }
+      .question-label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      /* the native arrow sat against the edge: drawn here instead, with room around it */
+      .select {
+        position: relative;
+        display: block;
+      }
+      .select select {
+        appearance: none;
+        width: 100%;
+        padding: 8px 40px 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        font-size: 15px;
+        cursor: pointer;
+      }
+      .select::after {
+        content: '';
+        position: absolute;
+        right: 16px;
+        top: 50%;
+        width: 8px;
+        height: 8px;
+        border-right: 2px solid var(--muted);
+        border-bottom: 2px solid var(--muted);
+        transform: translateY(-70%) rotate(45deg);
+        pointer-events: none;
+      }
+      #sql-box {
+        margin-top: 18px;
+      }
+      #sql-box summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+      #sql-box[open] summary {
+        margin-bottom: 10px;
+      }
+      a.ig {
+        display: inline-grid;
+        place-items: center;
+        width: 18px;
+        height: 18px;
+        margin-left: 4px;
+        vertical-align: -3px;
+        border-radius: 4px;
+        color: var(--muted);
+      }
+      a.ig:hover {
+        color: var(--accent);
+        background: var(--line);
       }
       .box {
         border: 1px solid var(--line);
@@ -148,14 +196,6 @@
         gap: 8px;
         align-items: center;
         margin: 8px 0;
-      }
-      .bar select {
-        flex: 1 1 240px;
-        min-width: 0;
-        padding: 5px 8px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        background: var(--bg);
       }
       #error {
         color: var(--error);
@@ -196,8 +236,8 @@
       code {
         font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
       }
-      .schema dl {
-        margin: 0;
+      dl.schema {
+        margin: 10px 0 0;
       }
       .schema dt {
         font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -231,23 +271,29 @@
         <span id="status" class="muted" role="status"></span>
       </form>
 
-      <div class="layout">
-        <section>
-          <div class="bar">
-            <select id="examples" aria-label="Example questions"></select>
-            <button class="primary" id="run" disabled title="Run (Ctrl+Enter)">Run</button>
-          </div>
+      <section class="ask">
+        <label for="examples" class="question-label">Question</label>
+        <span class="select">
+          <select id="examples"></select>
+        </span>
+        <div class="bar">
+          <span id="summary" class="muted"></span>
+        </div>
+        <div id="error" hidden></div>
+        <div class="results" id="results" hidden><table id="table"></table></div>
+        <p class="note muted">
+          Each crawl only sees follows among its owner's own people. A follow between two people who share no
+          loaded circle is missing from the data, so "none found" there means "can't see".
+        </p>
+
+        <details id="sql-box" class="box">
+          <summary>SQL behind this question <span class="muted">· edit it to ask your own</span></summary>
           <textarea id="sql" spellcheck="false" aria-label="SQL query"></textarea>
           <div class="bar">
-            <span id="summary" class="muted"></span>
+            <button class="primary" id="run" disabled title="Run (Ctrl+Enter)">Run</button>
+            <span class="muted">SQLite · Ctrl+Enter runs</span>
           </div>
-          <div id="error" hidden></div>
-          <div class="results" id="results" hidden><table id="table"></table></div>
-        </section>
-
-        <aside class="box schema">
-          <h2>Tables</h2>
-          <dl>
+          <dl class="schema">
             <dt>owners(username, position)</dt>
             <dd>whose graphs are loaded; position 0 is the first</dd>
             <dt>people(username, name, private, verified)</dt>
@@ -259,13 +305,8 @@
             <dt>edges(a, b)</dt>
             <dd>view: follows in both directions, for paths</dd>
           </dl>
-          <p class="note muted">
-            Each crawl only sees follows among its owner's own people. A follow between two people who
-            share no loaded circle is missing from the data, so "none found" there means "can't see".
-          </p>
-          <p class="note muted">Usernames in results open that person in the graph.</p>
-        </aside>
-      </div>
+        </details>
+      </section>
     </main>
     <script type="module" src="explore.js"></script>
   </body>
