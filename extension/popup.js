@@ -163,3 +163,18 @@ langButton($('lang'), () => {
   render(last);
 });
 checkLogin().then(() => act(() => send('getState')));
+
+// A folder-loaded extension never updates itself. The site publishes the version its zip
+// holds (pages.yml); when that is newer, a download button appears next to EN/ES.
+const newer = (a, b) => {
+  const [x, y] = [a, b].map((v) => v.split('.').map(Number));
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+};
+fetch(SHARE_BASE_URL + 'version.json', { cache: 'no-cache' })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((site) => {
+    if (site?.version && newer(site.version, chrome.runtime.getManifest().version)) $('update').hidden = false;
+  })
+  .catch(() => {}); // offline, or the site is down: no button
+$('update').onclick = () => chrome.tabs.create({ url: SHARE_BASE_URL + 'ig-social-graph.zip' });

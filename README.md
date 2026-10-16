@@ -73,6 +73,7 @@ The site is the extension's viewer, published from `extension/` by [`.github/wor
 
 ### Develop
 
+- **Bump `version` in `extension/manifest.json` when shipping a change to the extension.** The site publishes it as `version.json`; a popup whose version is older shows a download button for the new zip. Without the bump nobody gets told.
 - After editing, hit the reload icon on the extension's card in `chrome://extensions`. Chrome keeps the old background worker running until then, while the popup is read fresh each time.
 - The share storage is the Neon project linked in `neon.ts` (`neon login`, then `neon env pull` writes the owner's connection strings to `.env.local`, which git ignores). To set it up again: `psql "$DATABASE_URL_UNPOOLED" -v client_password=… -f db/shares.sql`, then `psql "$DATABASE_URL_UNPOOLED" -f db/graphs.sql`, then put that password in `SHARES_DB` in `store.js`.
 - A preview of the viewer that is hidden (a background tab) never finishes opening a link: the view is restored after the first animation frame, which hidden pages do not run.

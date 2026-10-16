@@ -37,6 +37,23 @@
         font-size: 15px;
         margin: 0 0 10px;
       }
+      h1 span {
+        display: flex;
+        gap: 6px;
+      }
+      #update {
+        flex: none;
+        display: grid;
+        place-items: center;
+        padding: 2px 5px;
+        color: var(--accent-fg);
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      #update svg {
+        width: 14px;
+        height: 14px;
+      }
       #lang {
         padding: 1px 7px;
         font-size: 11px;
@@ -128,7 +145,17 @@
     </style>
   </head>
   <body>
-    <h1>IG Social Graph <button id="lang">EN</button></h1>
+    <h1>
+      IG Social Graph
+      <span>
+        <button id="update" hidden data-i18n-title="p.updateTitle" data-i18n-aria-label="p.updateTitle" title="Hay una versión nueva: descargarla" aria-label="Hay una versión nueva: descargarla">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10" />
+          </svg>
+        </button>
+        <button id="lang">EN</button>
+      </span>
+    </h1>
     <div id="status" class="muted" data-i18n="p.loading">Cargando…</div>
     <div class="bar"><div id="bar"></div></div>
     <dl id="stats" hidden>
