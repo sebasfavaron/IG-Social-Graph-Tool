@@ -9,7 +9,7 @@ import { loadGraph, loadPeople, saveGraph } from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
 
-const INSTALL_URL = 'https://github.com/sebasfavaron/IG-Social-Graph-Tool#map-your-own-followers-chrome-extension';
+const INSTALL_URL = 'https://sebasfavaron.github.io/IG-Social-Graph-Tool/install.html';
 
 const $ = (id) => document.getElementById(id);
 // Inside the extension the graph comes from the crawl; as a plain web page (GitHub

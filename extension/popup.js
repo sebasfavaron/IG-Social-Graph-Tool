@@ -2,6 +2,7 @@ import { toGraph } from './lib/crawler.js';
 import { SHARE_BASE_URL, buildHash, encodeGraph } from './lib/share.js';
 import { photosFromThumbs } from './lib/vault.js';
 import { saveGraph } from './lib/store.js';
+import { formatDuration } from './lib/format.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -18,13 +19,6 @@ function settings() {
   };
 }
 
-function formatDuration(ms) {
-  const min = Math.round(ms / 60_000);
-  if (min < 1) return '< 1 min';
-  if (min < 60) return `${min} min`;
-  return `${Math.floor(min / 60)} h ${min % 60} min`;
-}
-
 const STATUS_TEXT = {
   running: (s) =>
     s.refreshing ? 'Fetching names and photos…' : s.phase === 'followers' ? 'Listing your followers…' : 'Checking who follows whom…',
@@ -35,12 +29,24 @@ const STATUS_TEXT = {
 };
 
 let settingsTouched = false;
+let loggedIn = true; // until the cookie says otherwise
+
+async function checkLogin() {
+  const cookie = await chrome.cookies.get({ url: 'https://www.instagram.com', name: 'ds_user_id' });
+  loggedIn = !!cookie?.value;
+}
 
 function render(s) {
   const has = !!s;
-  $('status').textContent = has ? STATUS_TEXT[s.status]?.(s) || s.status : 'Open the popup while logged in to Instagram and press Start.';
+  $('status').textContent = has
+    ? STATUS_TEXT[s.status]?.(s) || s.status
+    : loggedIn
+      ? 'Maps who among your followers know each other. It takes about an hour per 500 followers, and runs on its own.'
+      : 'Log in to Instagram in this browser first. It uses your own session.';
+  $('login').hidden = has || loggedIn;
+  $('intro').hidden = has;
   $('stats').hidden = !has;
-  $('start').hidden = has && s.status !== 'done';
+  $('start').hidden = (has && s.status !== 'done') || (!has && !loggedIn);
   $('start').textContent = has ? 'Start over' : 'Start';
   $('resume').hidden = !has || !['paused', 'error', 'cooldown'].includes(s.status);
   $('pause').hidden = !has || !['running', 'cooldown'].includes(s.status);
@@ -102,6 +108,11 @@ $('profiles').onclick = () => act(() => send('refreshProfiles'));
 $('reset').onclick = () => {
   if (confirm('Delete everything collected so far?')) act(() => send('reset'));
 };
+$('login').onclick = () => chrome.tabs.create({ url: 'https://www.instagram.com/' });
+$('guide').onclick = (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
+};
 $('view').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
 // Same kind of link the viewer's button makes: the crawl and its people's names and
 // photos go to the shared storage (store.js), and the link is just the username,
@@ -142,4 +153,7 @@ $('share').onclick = async () => {
 };
 
 chrome.storage.onChanged.addListener(() => act(() => send('getState')));
-act(() => send('getState'));
+chrome.cookies.onChanged.addListener(({ cookie }) => {
+  if (cookie.name === 'ds_user_id') checkLogin().then(() => act(() => send('getState')));
+});
+checkLogin().then(() => act(() => send('getState')));

@@ -64,6 +64,12 @@
         text-align: right;
         font-variant-numeric: tabular-nums;
       }
+      a {
+        color: inherit;
+      }
+      #intro {
+        margin: 8px 0 0;
+      }
       .error {
         color: var(--err);
         margin: 8px 0;
@@ -132,6 +138,7 @@
     <div id="error" class="error" hidden></div>
 
     <div class="row">
+      <button id="login" class="primary" hidden>Open Instagram</button>
       <button id="start" class="primary">Start</button>
       <button id="resume" class="primary" hidden>Resume</button>
       <button id="pause" hidden>Pause</button>
@@ -139,6 +146,9 @@
         Get names &amp; photos
       </button>
     </div>
+    <p id="intro" class="muted" hidden>
+      Your data stays in this browser until you share it. <a id="guide" href="welcome.html">Step-by-step guide</a>
+    </p>
     <div class="row">
       <button id="view">View graph</button>
       <button id="share">Copy share link</button>

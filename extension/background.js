@@ -341,8 +341,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'watchdog' && state.phase !== 'followers') downloadThumbs();
 });
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(({ reason }) => {
   chrome.alarms.create('watchdog', { periodInMinutes: 0.5 });
+  // first install only: reloading the unpacked extension reports 'update'
+  if (reason === 'install') chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
 });
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create('watchdog', { periodInMinutes: 0.5 });

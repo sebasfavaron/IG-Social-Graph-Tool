@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Welcome to IG Social Graph</title>
+    <link rel="icon" href="icon128.png" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #f6f8fa;
+        --fg: #1b1b1b;
+        --muted: #5f6368;
+        --line: #e3e3e3;
+        --accent: #0b63ce;
+        --accent-fg: #ffffff;
+        --ok: #1a7f37;
+        --err: #b3261e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --bg: #0d1117;
+          --surface: #161b22;
+          --fg: #e6edf3;
+          --muted: #9198a1;
+          --line: #30363d;
+          --accent: #79c0ff;
+          --accent-fg: #0d1117;
+          --ok: #3fb950;
+          --err: #ff7b72;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      main {
+        max-width: 620px;
+        margin: 0 auto;
+        padding: 40px 16px 64px;
+      }
+      h1 {
+        font-size: 28px;
+        line-height: 1.2;
+        margin: 0 0 8px;
+      }
+      h2 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      p {
+        margin: 0 0 8px;
+      }
+      .lead {
+        font-size: 18px;
+        color: var(--muted);
+        margin-bottom: 28px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr);
+        gap: 14px;
+        padding: 18px 0;
+        border-top: 1px solid var(--line);
+      }
+      .mark {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 2px solid var(--line);
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .step.done .mark {
+        background: var(--ok);
+        border-color: var(--ok);
+        color: #fff;
+      }
+      .step.done .todo,
+      .step:not(.done) .ok {
+        display: none;
+      }
+      .ok {
+        color: var(--ok);
+        font-weight: 600;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 18px;
+        margin-top: 4px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--fg);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-fg);
+      }
+      .btn.big {
+        font-size: 18px;
+        padding: 12px 28px;
+      }
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .btn:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .icon {
+        display: inline-grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        vertical-align: -6px;
+        font-size: 14px;
+      }
+      .icon img {
+        width: 16px;
+        height: 16px;
+      }
+      .bar {
+        height: 8px;
+        border-radius: 4px;
+        background: var(--line);
+        overflow: hidden;
+        margin: 10px 0;
+      }
+      .bar > div {
+        height: 100%;
+        width: 0;
+        background: var(--accent);
+        transition: width 0.3s;
+      }
+      .error {
+        color: var(--err);
+      }
+      ul {
+        padding-left: 20px;
+        margin: 8px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>You're almost there</h1>
+      <p class="lead">Two quick checks, then one button. After that it runs on its own.</p>
+
+      <section class="step" id="pin-step">
+        <div class="mark" aria-hidden="true">1</div>
+        <div>
+          <h2>Keep the icon where you can see it</h2>
+          <p class="todo">
+            Click the puzzle piece <span class="icon" aria-label="puzzle piece">🧩</span> at the top right of
+            Chrome, then the pin next to <strong>IG Social Graph</strong>. Its icon
+            <span class="icon"><img src="icon128.png" alt="" /></span> stays in the toolbar, and that's where you'll
+            see how far along it is.
+          </p>
+          <p class="ok">Pinned. The icon is in your toolbar.</p>
+        </div>
+      </section>
+
+      <section class="step" id="login-step">
+        <div class="mark" aria-hidden="true">2</div>
+        <div>
+          <h2>Be logged in to Instagram in this browser</h2>
+          <div class="todo">
+            <p>It uses your own Instagram session, so it needs you logged in here, in Chrome.</p>
+            <button class="btn" id="open-ig">Open Instagram to log in</button>
+            <p class="muted" style="margin-top: 8px">This page notices on its own once you're in.</p>
+          </div>
+          <p class="ok">You're logged in.</p>
+        </div>
+      </section>
+
+      <section class="step" id="start-step">
+        <div class="mark" aria-hidden="true">3</div>
+        <div>
+          <h2>Map your followers</h2>
+          <div id="before">
+            <ul>
+              <li>It takes about an hour for every 500 followers. Instagram sets that pace.</li>
+              <li>Keep Chrome open and use it as usual. You can close this tab.</li>
+              <li>If Instagram asks it to slow down, it waits and carries on by itself.</li>
+            </ul>
+            <button class="btn primary big" id="start" disabled>Start</button>
+            <p class="muted" id="start-hint" style="margin-top: 8px">Log in to Instagram first.</p>
+          </div>
+          <div id="during" hidden>
+            <p id="status" aria-live="polite"></p>
+            <div class="bar"><div id="bar"></div></div>
+            <p class="muted" id="eta"></p>
+            <p class="error" id="error" hidden></p>
+            <p class="muted" id="close-hint">You can close this tab. The icon in the toolbar shows how far along it is.</p>
+            <button class="btn primary" id="view" hidden>See your graph</button>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="welcome.js"></script>
+  </body>
+</html>

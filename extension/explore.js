@@ -101,9 +101,18 @@ let SQL = null; // the sql.js module
 let db = null;
 let owners = [];
 
-const sqlReady = window
-  .initSqlJs({ locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` })
+// SQLite loads alongside the graphs instead of before them: the page and the data come
+// first, the engine is only needed once both are in.
+const SQL_JS = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/';
+const sqlReady = new Promise((resolve, reject) => {
+  const script = Object.assign(document.createElement('script'), { src: `${SQL_JS}sql-wasm.js`, async: true });
+  script.onload = resolve;
+  script.onerror = () => reject(new Error('SQLite did not download'));
+  document.head.append(script);
+})
+  .then(() => window.initSqlJs({ locateFile: (file) => SQL_JS + file }))
   .then((module) => (SQL = module));
+sqlReady.catch(() => {}); // reported by load(), which waits for it
 
 function ownersFromHash() {
   const state = parseHash(location.hash);

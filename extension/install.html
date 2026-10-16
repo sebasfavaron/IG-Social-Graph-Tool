@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Map your own followers</title>
+    <meta name="description" content="Set up the IG Social Graph extension in Chrome and see your friend groups as a graph." />
+    <link rel="icon" href="icon128.png" />
+    <script>
+      try {
+        const saved = localStorage.getItem('theme');
+        if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+      } catch (_) {}
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #f6f8fa;
+        --fg: #1b1b1b;
+        --muted: #5f6368;
+        --line: #e3e3e3;
+        --accent: #0b63ce;
+        --accent-fg: #ffffff;
+        --ok: #1a7f37;
+        --chrome-bar: #dfe3e8;
+        --switch: #0b63ce;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          color-scheme: dark;
+          --bg: #0d1117;
+          --surface: #161b22;
+          --fg: #e6edf3;
+          --muted: #9198a1;
+          --line: #30363d;
+          --accent: #79c0ff;
+          --accent-fg: #0d1117;
+          --ok: #3fb950;
+          --chrome-bar: #21262d;
+          --switch: #79c0ff;
+        }
+      }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --surface: #161b22;
+        --fg: #e6edf3;
+        --muted: #9198a1;
+        --line: #30363d;
+        --accent: #79c0ff;
+        --accent-fg: #0d1117;
+        --ok: #3fb950;
+        --chrome-bar: #21262d;
+        --switch: #79c0ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      main {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 32px 16px 64px;
+      }
+      h1 {
+        font-size: 28px;
+        line-height: 1.2;
+        margin: 0 0 8px;
+      }
+      h2 {
+        font-size: 18px;
+        margin: 0 0 6px;
+      }
+      p {
+        margin: 0 0 10px;
+      }
+      .lead {
+        font-size: 18px;
+        color: var(--muted);
+        margin-bottom: 24px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+      }
+      code,
+      .addr {
+        font: 15px ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 18px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--fg);
+        font: inherit;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-fg);
+      }
+      .btn:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .note {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 24px;
+      }
+      .note .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+
+      /* ---- steps ---- */
+      ol.steps {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 32px;
+        counter-reset: step;
+      }
+      ol.steps > li {
+        counter-increment: step;
+        position: relative;
+        padding: 0 0 28px 48px;
+        border-left: 2px solid var(--line);
+        margin-left: 15px;
+      }
+      ol.steps > li:last-child {
+        border-left-color: transparent;
+        padding-bottom: 0;
+      }
+      ol.steps > li::before {
+        content: counter(step);
+        position: absolute;
+        left: -17px;
+        top: -2px;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: var(--accent-fg);
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+      }
+      .copy {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 8px 0;
+      }
+      .addr {
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        user-select: all;
+      }
+
+      /* ---- small pictures of what Chrome shows ---- */
+      .shot {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 10px 0 4px;
+        max-width: 420px;
+        font-size: 13px;
+        background: var(--bg);
+      }
+      .shot .bar {
+        background: var(--chrome-bar);
+        padding: 6px 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .shot .bar span {
+        color: var(--muted);
+      }
+      .shot .body {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+      }
+      .switch i {
+        width: 34px;
+        height: 18px;
+        border-radius: 9px;
+        background: var(--switch);
+        position: relative;
+      }
+      .switch i::after {
+        content: '';
+        position: absolute;
+        right: 2px;
+        top: 2px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #fff;
+      }
+      .fake {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 4px 10px;
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .fake.ring {
+        outline: 3px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .ring-soft {
+        outline: 3px solid var(--accent);
+        outline-offset: 4px;
+        border-radius: 10px;
+      }
+
+      ul.never {
+        padding-left: 20px;
+        margin: 0 0 24px;
+      }
+      ul.never li {
+        margin-bottom: 6px;
+      }
+      details {
+        border-top: 1px solid var(--line);
+        padding: 12px 0;
+      }
+      details:last-of-type {
+        border-bottom: 1px solid var(--line);
+      }
+      summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+      details p {
+        margin: 8px 0 0;
+      }
+      footer {
+        margin-top: 32px;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Map your own followers</h1>
+      <p class="lead">
+        See who among your followers know each other, with your friend groups as coloured clusters. Setting it
+        up takes about three minutes. Then it maps your followers on its own, which takes about an hour for
+        every 500.
+      </p>
+
+      <!-- shown on phones and tablets -->
+      <section id="on-phone" class="note" hidden>
+        <h2>This part needs a computer</h2>
+        <p>
+          The mapping runs in Chrome on a Mac or a Windows computer. Send this page to yourself and open it
+          there. The graph you get works on your phone too.
+        </p>
+        <div class="row">
+          <button class="btn primary" id="send">Send this page to myself</button>
+          <button class="btn" data-copy-page>Copy link</button>
+        </div>
+      </section>
+
+      <!-- shown in Safari, Firefox and other browsers that can't load it -->
+      <section id="other-browser" class="note" hidden>
+        <h2>Open this page in Chrome</h2>
+        <p>
+          The extension runs in Chrome, and also in Edge, Brave and Arc. Copy this page's link and paste it in
+          one of those. If you don't have any, <a href="https://www.google.com/chrome/">get Chrome</a> first.
+        </p>
+        <div class="row"><button class="btn primary" data-copy-page>Copy link</button></div>
+      </section>
+
+      <ol class="steps" id="steps">
+        <li>
+          <h2>Download the extension</h2>
+          <p><a class="btn primary" id="download" href="ig-social-graph.zip" download>Download IG Social Graph</a></p>
+          <p>
+            Open your Downloads and double-click <strong>ig-social-graph.zip</strong>. That gives you a folder
+            called <strong>ig-social-graph</strong>.
+          </p>
+          <p>
+            Move that folder to <strong>Documents</strong>. Chrome runs the extension from it, so it has to stay
+            where Chrome can find it.
+          </p>
+        </li>
+
+        <li>
+          <h2>Open Chrome's extensions page</h2>
+          <p>Chrome only opens this page from its own address bar. Copy the address, paste it in a new tab and press Enter.</p>
+          <div class="copy">
+            <span class="addr" id="ext-addr">chrome://extensions</span>
+            <button class="btn" id="copy-addr">Copy</button>
+          </div>
+        </li>
+
+        <li>
+          <h2>Turn on Developer mode</h2>
+          <p id="devmode-where">
+            It's the switch in the top-right corner of that page. It lets Chrome add an extension from a folder on
+            your computer.
+          </p>
+          <div class="shot" aria-hidden="true">
+            <div class="bar"><strong>Extensions</strong><span style="margin-left: auto"></span></div>
+            <div class="body">
+              <span class="muted">Search extensions</span>
+              <span class="switch ring-soft">Developer mode <i></i></span>
+            </div>
+          </div>
+        </li>
+
+        <li>
+          <h2>Click “Load unpacked” and pick the folder</h2>
+          <p>
+            A new row of buttons appears. Click <strong>Load unpacked</strong>, choose the
+            <strong>ig-social-graph</strong> folder in Documents and click <strong>Select</strong>.
+          </p>
+          <div class="shot" aria-hidden="true">
+            <div class="body" style="justify-content: flex-start">
+              <span class="fake ring">Load unpacked</span>
+              <span class="fake">Pack extension</span>
+              <span class="fake">Update</span>
+            </div>
+          </div>
+        </li>
+
+        <li>
+          <h2>Follow the welcome tab</h2>
+          <p>
+            A welcome tab opens by itself. It shows you how to keep the extension's icon in view, checks that
+            you're logged in to Instagram, and has the button that starts the mapping.
+          </p>
+        </li>
+      </ol>
+
+      <h2>What it does with your account</h2>
+      <ul class="never">
+        <li>It reads your followers lists from your own logged-in Instagram tab, one page every six seconds, the way you would scroll them.</li>
+        <li>It never posts, follows, likes or messages anyone, and it never sees your password.</li>
+        <li>What it collects stays in your browser. It leaves only when you press <strong>Copy share link</strong>.</li>
+        <li>A share link is public: anyone who has it sees the graph, with names and photos.</li>
+        <li>If Instagram asks it to slow down, it waits and carries on by itself.</li>
+      </ul>
+
+      <div id="trouble">
+      <h2>If something looks different</h2>
+      <details>
+        <summary>There is no “Load unpacked” button</summary>
+        <p>Developer mode is still off. Turn on the switch in the top-right corner of the extensions page.</p>
+      </details>
+      <details>
+        <summary>Chrome says “Manifest file is missing or unreadable”</summary>
+        <p>
+          The folder you picked is one level too high, or it's the zip itself. Open the folder you picked: the
+          right one has a file called <code>manifest.json</code> directly inside it.
+        </p>
+      </details>
+      <details>
+        <summary>Chrome asks to “Disable developer mode extensions”</summary>
+        <p>Some versions of Chrome ask this when they start. Close the message with ✕, and the extension keeps working.</p>
+      </details>
+      <details>
+        <summary>The extension disappeared</summary>
+        <p>The folder was moved or deleted. Put it back in Documents and do step 4 again. What it collected is kept.</p>
+      </details>
+      </div>
+
+      <footer class="muted">
+        Free and open source, <a href="https://github.com/sebasfavaron/IG-Social-Graph-Tool">on GitHub</a>.
+        <a href="./">See what a graph looks like</a>.
+      </footer>
+    </main>
+
+    <script>
+      const ua = navigator.userAgent;
+      const brands = (navigator.userAgentData?.brands || []).map((b) => b.brand);
+      // iPads report a Mac user agent, so touch points tell them apart
+      const phone =
+        navigator.userAgentData?.mobile ||
+        /Android|iPhone|iPod|Mobi/i.test(ua) ||
+        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      const chromium = brands.includes('Chromium') || (/Chrome\//.test(ua) && !/Edg\/|OPR\//.test(ua)) || /Edg\//.test(ua);
+      const edge = /Edg\//.test(ua) || brands.includes('Microsoft Edge');
+
+      if (phone) {
+        document.getElementById('on-phone').hidden = false;
+        document.getElementById('steps').hidden = true;
+        document.getElementById('trouble').hidden = true;
+      } else if (!chromium) {
+        document.getElementById('other-browser').hidden = false;
+      }
+      if (edge) {
+        document.getElementById('ext-addr').textContent = 'edge://extensions';
+        document.getElementById('devmode-where').textContent =
+          "It's the switch in the left-hand column of that page. It lets Edge add an extension from a folder on your computer.";
+      }
+
+      async function copy(text, button) {
+        const label = button.textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = 'Copied';
+        } catch (_) {
+          prompt('Copy this:', text);
+        }
+        setTimeout(() => (button.textContent = label), 2000);
+      }
+      const pageUrl = location.href.split('#')[0];
+      document.getElementById('copy-addr').onclick = (e) =>
+        copy(document.getElementById('ext-addr').textContent, e.currentTarget);
+      for (const b of document.querySelectorAll('[data-copy-page]')) b.onclick = () => copy(pageUrl, b);
+      document.getElementById('send').onclick = async () => {
+        const data = { title: 'Map your own followers', text: 'Open this on my computer, in Chrome:', url: pageUrl };
+        if (navigator.share) {
+          try {
+            await navigator.share(data);
+            return;
+          } catch (err) {
+            if (err.name === 'AbortError') return;
+          }
+        }
+        location.href = `mailto:?subject=${encodeURIComponent(data.title)}&body=${encodeURIComponent(`${data.text} ${pageUrl}`)}`;
+      };
+    </script>
+  </body>
+</html>
