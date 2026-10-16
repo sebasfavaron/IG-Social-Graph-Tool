@@ -51,7 +51,7 @@ The site keeps your key (in this browser's storage for the site). A key can also
 
 ### Combine two people's graphs
 
-**Combine with friends…** lists everyone who has shared a graph, with their photo, how many people their graph holds and when they shared it. Tick up to five and they are drawn as one graph; nothing new is uploaded. The same list is the site's home page. The key switches from friend groups to circles: one colour for the people only each of you knows, and one for the people in more than one circle (with two people, "in both"). Click a circle to keep it highlighted. The combined link lists the usernames (`#o=you&m=friend,another`), and each name in the title opens that person's graph alone.
+**Combine with friends…** lists everyone who has shared a graph, with their photo, how many people their graph holds and when they shared it. Tick up to five and they are drawn as one graph; nothing new is uploaded. The same list is the site's home page once you have published; before that, the home page says what the tool does over a made-up graph and links to the install page. The key switches from friend groups to circles: one colour for the people only each of you knows, and one for the people in more than one circle (with two people, "in both"). Click a circle to keep it highlighted. The combined link lists the usernames (`#o=you&m=friend,another`), and each name in the title opens that person's graph alone.
 
 ### Explore the data
 
@@ -68,6 +68,8 @@ Links made before shares were stored carry the whole graph after `#g=` (~10 000 
 Links from before the shared database (`#s=…&k=…`) were encrypted, and only the link holds the key. Opening one copies its graph, names and photos into the database (a combined one is split back into each person's graph), replacing a stored graph only when the link is newer, and the address becomes the short `#o=` link.
 
 The site is the extension's viewer, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it.
+
+Every link to the site shows the same preview card in chats ([`extension/og.png`](./extension/og.png), tags in `viewer.html`): the hash never reaches a server, so a shared graph cannot have a card of its own. Regenerate the image with [`scripts/og-image.mjs`](./scripts/og-image.mjs) after changing the front page.
 
 ### Limits and gotchas
 
@@ -107,6 +109,7 @@ The site is the extension's viewer, published from `extension/` by [`.github/wor
 | `db/shares.sql` | the share storage: table, the two functions, the public role allowed to call only those |
 | `extension/lib/share.js` | packs the graph and view state into the link: `#g=…&p=…&c=…&v=…&n=…&m=…` |
 | `extension/viewer.html`, `viewer.js` | the page: panel, search, groups key, themes, link state |
+| `extension/lib/hero.js` | the site's front page for newcomers: a made-up graph that turns and lights one friend group at a time |
 | `extension/install.html` | site only: step-by-step install for non-technical people; phones and non-Chromium browsers get told to switch |
 | `extension/welcome.html`, `welcome.js` | opens on first install: pin the icon, log in, Start, progress |
 

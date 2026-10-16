@@ -20,6 +20,7 @@ import {
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { lang, setLang, t, translateStatic } from './lib/i18n.js';
 import { ask, hasBridge, onLocalChange } from './lib/bridge.js';
+import { drawHero } from './lib/hero.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
 
 const INSTALL_URL = 'https://sebasfavaron.github.io/IG-Social-Graph-Tool/install.html';
@@ -857,6 +858,7 @@ async function openStored(owner, partners = []) {
 async function showLocked(owner) {
   clearTimeout(syncTimer);
   const info = await teaser(owner).catch(() => null);
+  leaveHome();
   graphControl?.destroy();
   graphControl = null;
   shown = null;
@@ -960,7 +962,16 @@ let shared = null; // the list, fetched once per page
 function openHome() {
   document.body.classList.add('home');
   placeHome();
+  // someone new: what this is and how to get their own; a publisher: the list to dive in
+  if (!hasLocal && !me()) return openHero();
   openPicker();
+}
+let hero = null;
+function openHero() {
+  $('hero-cta').href = INSTALL_URL;
+  $('hero').hidden = false;
+  document.body.classList.add('hero-on');
+  hero = drawHero($('hero-graph'));
 }
 // the side panel starts below the header, whose height changes with the screen
 function placeHome() {
@@ -969,7 +980,10 @@ function placeHome() {
 window.addEventListener('resize', placeHome);
 function leaveHome() {
   if (!document.body.classList.contains('home')) return;
-  document.body.classList.remove('home');
+  document.body.classList.remove('home', 'hero-on');
+  hero?.stop();
+  hero = null;
+  $('hero').hidden = true;
   $('combine-dialog').close();
 }
 function openPicker() {
