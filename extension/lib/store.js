@@ -94,12 +94,59 @@ function ownerKey(owner) {
 // whether this browser published the owner's graph (and so may unpublish it)
 export const publishedHere = (owner) => !!readOwnerKey(owner);
 
+// Who is looking: the graph this browser published last, and its key. Reading graphs and
+// names takes it (db/graphs.sql: publishers see their network). null: nothing published here.
+function store(name, value) {
+  try {
+    if (value === null) globalThis.localStorage?.removeItem(name);
+    else globalThis.localStorage?.setItem(name, value);
+  } catch (_) {}
+}
+function read(name) {
+  try {
+    return globalThis.localStorage?.getItem(name) ?? null;
+  } catch (_) {
+    return null;
+  }
+}
+export function me() {
+  const owner = read('me');
+  const key = owner && readOwnerKey(owner);
+  return key ? { owner, key } : null;
+}
+// The extension keeps the key; links from it to the site carry it once (after the "#",
+// never sent anywhere), and the site keeps it from then on.
+export function adoptIdentity(owner, key) {
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(owner || '') || !/^[0-9a-f]{48}$/.test(key || '')) return false;
+  store(ownerKeyName(owner), key);
+  store('me', owner);
+  return true;
+}
+// A link from the extension that carries its identity: &me=<owner>&mk=<key> in the hash.
+// Adopts it, and -> the hash without it (for the address bar), or null if there was none.
+export function takeIdentity(hash) {
+  const m = /[#&]me=([A-Za-z0-9._]{1,30})&mk=([0-9a-f]{48})/.exec(hash || '');
+  if (!m || !adoptIdentity(m[1], m[2])) return null;
+  const rest = hash.replace(m[0].slice(1), '').replace('#&', '#').replace(/&&/g, '&').replace(/&$/, '');
+  return rest === '#' ? '' : rest;
+}
+// the same, to add to a link to the site
+export function identityParams() {
+  const who = me();
+  return who ? `&me=${who.owner}&mk=${who.key}` : '';
+}
+const viewerParams = () => {
+  const who = me();
+  return [who?.owner ?? null, who?.key ?? null];
+};
+
 // Takes the owner's graph off the shared list, with the names and photos only it had.
 export async function unpublishGraph(owner, { fetchImpl = fetch } = {}) {
   const key = readOwnerKey(owner);
   if (!key) throw new Error('only the browser that published this graph can unpublish it');
   await sharesQuery('select unpublish($1, $2)', [owner, key], fetchImpl);
   writeSaved(owner, null);
+  if (read('me') === owner) store('me', null); // it no longer opens the network
 }
 
 // Saves an owner's crawl and the people in it (only those in ids). onlyIfMissing: for
@@ -114,17 +161,19 @@ export async function saveGraph(
   const print = await fingerprint(g, rows);
   if (!onlyIfMissing && readSaved(owner) === print) return true;
   // copying an old link over is not publishing: it carries no key, and claims nothing
+  const key = onlyIfMissing ? null : ownerKey(owner);
   const [[saved]] = await sharesQuery(
-    'select save_graph($1, $2, $3, $4, $5, $6)',
-    [owner, g, onlyIfMissing, fromShare, ids.size, onlyIfMissing ? null : ownerKey(owner)],
+    'select save_graph($1, $2, $3, $4, $5, $6, $7::jsonb)',
+    [owner, g, onlyIfMissing, fromShare, ids.size, key, JSON.stringify([...ids])],
     fetchImpl
   );
+  if (key) store('me', owner); // publishing is what lets this browser see the network
   if (!saved && onlyIfMissing) return false;
   let batch = [];
   let size = 0;
   const flush = async () => {
     if (!batch.length) return;
-    await sharesQuery('select save_people($1::jsonb, $2, $3)', [JSON.stringify(batch), onlyIfMissing, owner], fetchImpl);
+    await sharesQuery('select save_people($1::jsonb, $2, $3, $4)', [JSON.stringify(batch), onlyIfMissing, owner, key], fetchImpl);
     batch = [];
     size = 0;
   };
@@ -139,11 +188,15 @@ export async function saveGraph(
   return true;
 }
 
-// -> the owner's graph packed as in a #g= link, or null when they never shared one
-// Everyone who shared a graph, newest first:
+// The graphs in this browser's network (its own and every one linked to it), newest first;
+// none before it publishes:
 // -> [{ owner, updatedAt: Date, people (count, or null), name, photo (data URL or null) }]
 export async function listGraphs({ fetchImpl = fetch } = {}) {
-  const rows = await sharesQuery('select owner, updated_at, people, name, photo, photo_type from list_graphs()', [], fetchImpl);
+  const rows = await sharesQuery(
+    'select owner, updated_at, people, name, photo, photo_type from list_graphs($1, $2)',
+    viewerParams(),
+    fetchImpl
+  );
   return rows.map(([owner, updatedAt, people, name, photo, type]) => ({
     owner,
     updatedAt: new Date(updatedAt),
@@ -153,9 +206,20 @@ export async function listGraphs({ fetchImpl = fetch } = {}) {
   }));
 }
 
+// -> the owner's graph packed as in a #g= link, or null when it is not in this browser's
+// network (or was never shared: teaser() tells the two apart)
 export async function loadGraph(owner, { fetchImpl = fetch } = {}) {
-  const rows = await sharesQuery('select data from get_graph($1)', [owner], fetchImpl);
+  const rows = await sharesQuery('select data from get_graph($1, $2, $3)', [owner, ...viewerParams()], fetchImpl);
   return rows[0]?.[0] ?? null;
+}
+
+// What anyone may see of a published graph, to be invited in:
+// -> { owner, people, name, photo, graphs (published in all) } or null if never published
+export async function teaser(owner, { fetchImpl = fetch } = {}) {
+  const rows = await sharesQuery('select owner, people, name, photo, photo_type, graphs from graph_teaser($1)', [owner], fetchImpl);
+  if (!rows.length) return null;
+  const [[o, people, name, photo, type, graphs]] = rows;
+  return { owner: o, people, name: name || '', photo: photo && type ? `data:${type};base64,${photo}` : null, graphs };
 }
 
 // -> { profiles: { user: { name, private, verified } }, photos: Map user -> data URL }
@@ -168,9 +232,9 @@ export async function loadPeople(ids, { fetchImpl = fetch, withPhotos = true } =
     batches.map((names) =>
       sharesQuery(
         withPhotos
-          ? 'select username, name, flags, photo, photo_type from get_people($1)'
-          : 'select username, name, flags from get_people($1)',
-        [names],
+          ? 'select username, name, flags, photo, photo_type from get_people($1, $2, $3)'
+          : 'select username, name, flags from get_people($1, $2, $3)',
+        [names, ...viewerParams()],
         fetchImpl
       )
     )
@@ -193,7 +257,7 @@ export async function loadPhotos(ids, { onBatch, fetchImpl = fetch } = {}) {
   const worker = async () => {
     while (next < all.length) {
       const names = all.slice(next, (next += PHOTO_READ_BATCH));
-      const rows = await sharesQuery('select username, photo, photo_type from get_people($1)', [names], fetchImpl);
+      const rows = await sharesQuery('select username, photo, photo_type from get_people($1, $2, $3)', [names, ...viewerParams()], fetchImpl);
       const batch = new Map();
       for (const [username, photo, type] of rows) if (photo && type) batch.set(username, `data:${type};base64,${photo}`);
       for (const [u, url] of batch) photos.set(u, url);

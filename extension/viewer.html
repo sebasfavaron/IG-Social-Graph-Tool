@@ -436,6 +436,48 @@
         color: var(--warn-fg);
       }
 
+      /* ---- locked: a graph outside this browser's network ---- */
+      #locked {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: min(420px, calc(100vw - 32px));
+        box-sizing: border-box;
+        padding: 20px;
+        text-align: center;
+      }
+      #locked[hidden],
+      #locked img[hidden],
+      #locked a[hidden] {
+        display: none;
+      }
+      #locked img {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 1px solid var(--line);
+      }
+      #locked h2 {
+        margin: 8px 0;
+        font-size: 17px;
+      }
+      #locked p {
+        margin: 0 0 10px;
+        line-height: 1.5;
+      }
+      .locked-cta {
+        display: inline-block;
+        margin-top: 4px;
+        padding: 7px 14px;
+        border-radius: 6px;
+        background: var(--accent);
+        color: var(--bg);
+        font-weight: 600;
+        text-decoration: none;
+      }
+
       /* ---- combine dialog ---- */
       #combine-dialog {
         width: min(440px, calc(100vw - 32px));
@@ -559,6 +601,15 @@
       }
       body.home #combine-cancel {
         display: none;
+      }
+      /* before this browser publishes: the rule instead of a list to pick from */
+      #combine-dialog.locked #picker-text,
+      #combine-dialog.locked #picker-go {
+        display: none;
+      }
+      #combine-dialog.locked #picker-status {
+        color: inherit;
+        line-height: 1.5;
       }
       /* nothing to search or click yet */
       body.home .search,
@@ -1055,7 +1106,7 @@
 
     <dialog id="combine-dialog" class="panel-box" aria-labelledby="combine-title">
       <h2 id="combine-title" data-i18n="pickerTitle">Grafos compartidos</h2>
-      <p class="muted" data-i18n="pickerText">Elegí a quiénes ver juntos, hasta 5. Sus círculos se dibujan en un solo grafo.</p>
+      <p id="picker-text" class="muted" data-i18n="pickerText">Elegí a quiénes ver juntos, hasta 5. Sus círculos se dibujan en un solo grafo.</p>
       <label for="picker-filter" class="sr-only" data-i18n="pickerFilter">Buscar entre los grafos</label>
       <input id="picker-filter" type="search" placeholder="Buscar entre los grafos" data-i18n-placeholder="pickerFilter" autocomplete="off" spellcheck="false" hidden />
       <ul id="picker-list" aria-labelledby="combine-title"></ul>
@@ -1065,6 +1116,15 @@
         <button type="button" id="picker-go" class="primary">Ver</button>
       </div>
     </dialog>
+
+    <!-- a link to a graph this browser may not see yet: who published it, and how to get in -->
+    <section id="locked" class="panel-box" hidden aria-labelledby="locked-title">
+      <img id="locked-photo" alt="" hidden />
+      <h2 id="locked-title"></h2>
+      <p id="locked-text"></p>
+      <p id="locked-how" class="muted"></p>
+      <a id="locked-cta" class="locked-cta" target="_blank" rel="noopener" hidden data-i18n="inviteWide"></a>
+    </section>
 
     <div id="announce" class="sr-only" aria-live="polite"></div>
 

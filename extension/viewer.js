@@ -4,7 +4,19 @@ import { pruneLoneNodes } from './lib/prune.js';
 import { friendGroups } from './lib/groups.js';
 import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
 import { downloadShare, photosFromThumbs, unpackShare, unseal } from './lib/vault.js';
-import { listGraphs, loadGraph, loadPeople, loadPhotos, publishedHere, saveGraph, unpublishGraph } from './lib/store.js';
+import {
+  identityParams,
+  listGraphs,
+  loadGraph,
+  loadPeople,
+  loadPhotos,
+  me,
+  publishedHere,
+  saveGraph,
+  takeIdentity,
+  teaser,
+  unpublishGraph,
+} from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { lang, setLang, t, translateStatic } from './lib/i18n.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
@@ -98,6 +110,7 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   updateExplore();
   // someone looking at a shared graph: how to make their own (the extension has it already)
   $('invite').hidden = inExtension;
+  $('locked').hidden = true;
   leaveHome();
   $('combine').hidden = !shown;
   pinned = null;
@@ -190,7 +203,9 @@ function updateExplore() {
   updateShareButton();
   const on = !!shown && isStored();
   $('explore').hidden = !on;
-  if (on) $('explore').href = `${SHARE_BASE_URL}explore.html${buildHash({ o: shown.username, m: shown.partners })}`;
+  // from the extension the site does not know this browser yet: the link tells it, once
+  if (on)
+    $('explore').href = `${SHARE_BASE_URL}explore.html${buildHash({ o: shown.username, m: shown.partners })}${inExtension ? identityParams() : ''}`;
 }
 let syncTimer = null;
 function syncUrl() {
@@ -810,12 +825,35 @@ async function openStored(owner, partners = []) {
   const crawls = await Promise.all(
     owners.map(async (o) => {
       const g = await loadGraph(o);
-      if (!g) throw new Error(t('notShared', o));
+      if (!g) throw Object.assign(new Error(t('notShared', o)), { locked: o });
       return decodeGraph(g);
     })
   );
   const graph = partners.length ? mergeGraphs(...crawls) : crawls[0];
   return { graph, crawls };
+}
+
+// A graph this browser cannot see (yet): who published it, the rule, and how to get in.
+async function showLocked(owner) {
+  const info = await teaser(owner).catch(() => null);
+  graphControl?.destroy();
+  graphControl = null;
+  shown = null;
+  parts = new Map();
+  document.title = `@${owner}`;
+  $('title').textContent = 'IG Social Graph';
+  $('counts').textContent = '';
+  $('groups').hidden = true;
+  $('share').hidden = $('combine').hidden = $('explore').hidden = $('unpublish').hidden = true;
+  $('empty').hidden = true;
+  $('locked-photo').hidden = !info?.photo;
+  if (info?.photo) $('locked-photo').src = info.photo;
+  $('locked-title').textContent = info ? t('lockedTitle', owner, info.people) : t('lockedNotShared', owner);
+  $('locked-text').textContent = t('lockedRule') + (info?.graphs ? t('lockedCount', info.graphs) : '');
+  $('locked-how').textContent = me() ? t('lockedFar', owner) : t(inExtension ? 'lockedHowExtension' : 'lockedHowSite');
+  $('locked-cta').hidden = inExtension || !!me();
+  $('locked-cta').href = INSTALL_URL;
+  $('locked').hidden = false;
 }
 
 // Names, then photos, from the shared storage for the people of the graph just shown that
@@ -925,7 +963,9 @@ function openPicker() {
   } else {
     dialog.showModal();
   }
-  if (!shared) {
+  if (!me()) {
+    shared = []; // nothing to read before this browser publishes
+  } else if (!shared) {
     $('picker-status').textContent = t('pickerLoading');
     listGraphs()
       .then((list) => {
@@ -991,7 +1031,9 @@ function renderPicker() {
       return li;
     })
   );
-  if (shared && !visible.length) $('picker-status').textContent = query ? t('pickerNoMatch') : t('pickerNone');
+  dialog.classList.toggle('locked', !me());
+  if (!me()) $('picker-status').textContent = t('pickerLocked');
+  else if (shared && !visible.length) $('picker-status').textContent = query ? t('pickerNoMatch') : t('pickerNone');
   else if (shared) $('picker-status').textContent = full ? t('pickerMax', MAX_OWNERS) : '';
   $('picker-go').textContent = t('pickerGo', chosen.length);
   $('picker-go').disabled = !chosen.length;
@@ -1081,6 +1123,10 @@ async function openShareHash() {
       await show(graph, { encodedGraph: state.g });
     }
   } catch (err) {
+    if (err.locked) {
+      await showLocked(err.locked);
+      return true;
+    }
     alert(t('didNotOpen', err.message));
     if (state.s || state.o) $('counts').textContent = '';
     return false;
@@ -1209,6 +1255,7 @@ async function share() {
         });
         storedOwners.add(owner);
       }
+      shared = null; // publishing opens the network: read the list again
       syncUrl(); // on the site the address bar becomes the short link too
     }
     if (!isStored() && !encoded) encoded = await encodeGraph(shown);
@@ -1367,6 +1414,9 @@ if (inExtension) {
     if (selected) paintWho(selected);
   });
 }
+// a link from the extension: this browser is that publisher from now on
+const cleaned = takeIdentity(location.hash);
+if (cleaned !== null) history.replaceState(null, '', location.pathname + location.search + cleaned);
 if (!(await openShareHash())) {
   const { crawl } = inExtension ? await chrome.storage.local.get('crawl') : {};
   if (crawl) await show(toGraph(crawl));

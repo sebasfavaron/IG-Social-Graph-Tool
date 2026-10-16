@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listGraphs, loadGraph, loadPeople, publishedHere, saveGraph, unpublishGraph } from '../extension/lib/store.js';
+import { adoptIdentity, listGraphs, loadGraph, loadPeople, me, publishedHere, saveGraph, teaser, unpublishGraph } from '../extension/lib/store.js';
 import { buildHash, parseHash } from '../extension/lib/share.js';
 import { mergeGraphs, ownGraph } from '../extension/lib/merge.js';
 
@@ -20,8 +20,9 @@ function fakeNeon() {
     const { query, params } = JSON.parse(init.body);
     calls.push(query);
     const ok = (rows) => new Response(JSON.stringify({ rows }));
-    if (query === 'select save_graph($1, $2, $3, $4, $5, $6)') {
-      const [owner, data, onlyIfMissing, fromShare, count, key] = params;
+    if (query === 'select save_graph($1, $2, $3, $4, $5, $6, $7::jsonb)') {
+      const [owner, data, onlyIfMissing, fromShare, count, key, members] = params;
+      calls.members = JSON.parse(members);
       if (keys.has(owner) && (onlyIfMissing || keys.get(owner) !== key)) {
         if (onlyIfMissing) return ok([[false]]);
         return new Response(JSON.stringify({ message: 'this graph was published from another browser' }), { status: 400 });
@@ -40,7 +41,7 @@ function fakeNeon() {
       graphs.delete(owner);
       return ok([[true]]);
     }
-    if (query === 'select save_people($1::jsonb, $2, $3)') {
+    if (query === 'select save_people($1::jsonb, $2, $3, $4)') {
       const [rows, onlyIfMissing] = params;
       for (const r of JSON.parse(rows)) {
         const old = people.get(r.u);
@@ -49,15 +50,20 @@ function fakeNeon() {
       }
       return ok([[1]]);
     }
-    if (query.includes('from list_graphs()')) {
+    // (who may read what is the database's job, tested against it: db/graphs.sql)
+    if (query.includes('from list_graphs($1, $2)')) {
       const owners = [...graphs.keys()].sort((x, y) => dates.get(y) - dates.get(x));
       return ok(owners.map((o) => {
         const p = people.get(o);
         return [o, new Date(dates.get(o) * 1000).toISOString(), counts.get(o), p?.n || null, p?.p || null, p?.t || null];
       }));
     }
-    if (query === 'select data from get_graph($1)') return ok(graphs.has(params[0]) ? [[graphs.get(params[0])]] : []);
-    if (query.includes('from get_people($1)')) {
+    if (query === 'select data from get_graph($1, $2, $3)') return ok(graphs.has(params[0]) ? [[graphs.get(params[0])]] : []);
+    if (query.includes('from graph_teaser($1)')) {
+      const o = params[0];
+      return ok(graphs.has(o) ? [[o, counts.get(o), people.get(o)?.n || null, null, null, graphs.size]] : []);
+    }
+    if (query.includes('from get_people($1, $2, $3)')) {
       return ok(params[0].filter((u) => people.has(u)).map((u) => {
         const p = people.get(u);
         return [u, p.n || null, p.f, p.p || null, p.t || null];
@@ -193,6 +199,36 @@ test('only the browser that published a graph replaces or unpublishes it', async
     for (const [k, v] of mine) store.set(k, v);
     await unpublishGraph('me', neon);
     assert.equal(await loadGraph('me', neon), null);
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
+test('publishing makes this browser a viewer; the site adopts that from a link', async () => {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => store.get(k) ?? null,
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  try {
+    const neon = fakeNeon();
+    assert.equal(me(), null);
+    await saveGraph({ owner: 'me', g: 'MINE', ids: new Set(['me', 'ana', 'bo']) }, neon);
+    assert.equal(me().owner, 'me');
+    assert.match(me().key, /^[0-9a-f]{48}$/);
+    assert.deepEqual(neon.calls.members, ['me', 'ana', 'bo']); // everyone, for the network links
+    const { key } = me();
+    // another browser (the site), handed the identity by a link from the extension
+    store.clear();
+    assert.equal(adoptIdentity('me', 'not a key'), false);
+    assert.equal(adoptIdentity('me', key), true);
+    assert.deepEqual(me(), { owner: 'me', key });
+    assert.deepEqual(await teaser('me', neon), { owner: 'me', people: 3, name: '', photo: null, graphs: 1 });
+    assert.equal(await teaser('nobody', neon), null);
+    // unpublishing ends it
+    await unpublishGraph('me', neon);
+    assert.equal(me(), null);
   } finally {
     delete globalThis.localStorage;
   }

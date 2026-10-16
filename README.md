@@ -41,7 +41,11 @@ The database keeps one graph per person and one row per Instagram account. Someo
 
 **Only the browser that published a graph can replace or unpublish it.** The first publish makes a random key that stays in that browser (the database keeps only its hash); **Unpublish** on your own graph deletes it, and the names and photos only it had, from the database. Clearing the browser's data for the extension loses the key, and then only whoever runs the database can free the graph.
 
-**Nothing in it is private.** The browser connects with a password that is in the code, so anyone can read every graph, name and photo there, and save a graph under any username ([`db/graphs.sql`](./db/graphs.sql)). It suits friends playing with it. Uploads stop at 2 MB per graph, 60 graphs an hour and 400 MB in total, which keeps strangers from filling the free tier.
+**Publish yours to see the others.** Graphs are seen among people who published their own. Two graphs are linked when their owners follow each other (one way or both); your network is every graph you can reach through such links, friends of friends included, and that is what the home list, links and Explore show you. Each side of a link is vouched for by the other person's own crawl, so a made-up account links to nobody and only ever sees itself. Before you publish, a link to someone's graph shows who published it and how many people it holds, and how to get in.
+
+The extension keeps your key, so the site learns who you are from a link the extension opens (**See the network on the web** in the popup, or **Explore data**); after that the site remembers.
+
+**What is still public.** The database password is in the page's code, so the rules live in the database functions ([`db/graphs.sql`](./db/graphs.sql)). Without accounts, anyone can publish under a username nobody has claimed yet; a real name and profile photo can be read by a network that lists that username (Instagram shows those to anyone anyway), but who follows whom stays inside its network, and nobody outside can rename anyone. Uploads stop at 2 MB per graph, 60 graphs an hour and 400 MB in total, which keeps strangers from filling the free tier.
 
 ### Combine two people's graphs
 

@@ -1,7 +1,7 @@
 import { toGraph } from './lib/crawler.js';
 import { SHARE_BASE_URL, buildHash, encodeGraph } from './lib/share.js';
 import { photosFromThumbs } from './lib/vault.js';
-import { saveGraph } from './lib/store.js';
+import { identityParams, me, saveGraph } from './lib/store.js';
 import { lang, langButton, t, translateStatic } from './lib/i18n.js';
 import { formatDuration } from './lib/format.js';
 
@@ -114,6 +114,14 @@ $('guide').onclick = (e) => {
   chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
 };
 $('view').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
+// Once published, the site can show the network too: the link tells it who this is, once.
+function updateNetworkLink() {
+  $('network-row').hidden = !me();
+}
+$('network').onclick = (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: `${SHARE_BASE_URL}#${identityParams().slice(1)}` });
+};
 // Same kind of link the viewer's button makes: the crawl and its people's names and
 // photos go to the shared storage (store.js), and the link is just the username,
 // opening on the public page (loners included; the viewer hides them).
@@ -142,6 +150,7 @@ $('publish-go').onclick = async () => {
       photos: photosFromThumbs(thumbs),
     });
     url = SHARE_BASE_URL + buildHash({ o: owner });
+    updateNetworkLink();
   } catch (err) {
     $('error').hidden = false;
     $('error').textContent = t('couldNotShare', err.message);
@@ -166,6 +175,7 @@ chrome.cookies.onChanged.addListener(({ cookie }) => {
 // Spanish by default; the EN/ES button switches it, shared with the extension's viewer
 document.documentElement.lang = lang;
 translateStatic();
+updateNetworkLink();
 langButton($('lang'), () => {
   translateStatic();
   render(last);

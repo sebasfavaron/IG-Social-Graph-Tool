@@ -1,5 +1,5 @@
 import { decodeGraph, parseHash, buildHash } from './lib/share.js';
-import { loadGraph, loadPeople } from './lib/store.js';
+import { loadGraph, loadPeople, me, takeIdentity, teaser } from './lib/store.js';
 import { mergeGraphs, MAX_OWNERS } from './lib/merge.js';
 import { lang, langButton, t, translateStatic } from './lib/i18n.js';
 
@@ -116,6 +116,10 @@ const sqlReady = new Promise((resolve, reject) => {
   .then((module) => (SQL = module));
 sqlReady.catch(() => {}); // reported by load(), which waits for it
 
+// a link from the extension: this browser is that publisher from now on
+const cleaned = takeIdentity(location.hash);
+if (cleaned !== null) history.replaceState(null, '', location.pathname + location.search + cleaned);
+
 function ownersFromHash() {
   const state = parseHash(location.hash);
   return state?.o ? [state.o, ...state.m] : [];
@@ -133,7 +137,7 @@ async function load(list) {
     const crawls = await Promise.all(
       owners.map(async (o) => {
         const g = await loadGraph(o);
-        if (!g) throw new Error(`@${o} has not shared a graph yet`);
+        if (!g) throw new Error((await teaser(o)) ? (me() ? t('lockedFar', o) : t('x.locked')) : t('notShared', o));
         return decodeGraph(g);
       })
     );
