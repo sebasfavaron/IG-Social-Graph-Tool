@@ -50,6 +50,10 @@
         background: var(--accent);
         border-color: var(--accent);
       }
+      /* the id rule above outranks button[hidden], so hidden needs its own */
+      #update[hidden] {
+        display: none;
+      }
       #update svg {
         width: 14px;
         height: 14px;
