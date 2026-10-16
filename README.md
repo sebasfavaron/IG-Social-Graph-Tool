@@ -12,7 +12,7 @@ Not technical? [**The install page**](https://sebasfavaron.github.io/IG-Social-G
 2. Log in to [instagram.com](https://www.instagram.com) in that browser.
 3. Click the extension icon → **Start**. It lists your followers, then asks Instagram, for each of them, which accounts you follow also follow them.
 4. Leave it running. The popup shows progress and the time left, measured from the pace so far (Instagram's pauses included); the icon badge shows the percentage. You can close the popup, pause and resume, or restart the browser: progress is saved.
-5. **View graph** opens the graph in a new tab. **Copy share link** copies a short link anyone can open, no extension needed, with names and photos included.
+5. **View graph** opens the graph in a new tab. **Publish & copy link** makes your graph public (it asks first, in warning colours) and copies a short link anyone can open, no extension needed, with names and photos included.
 
 The crawl also keeps everyone's real name and profile photo, which come with the same lists at no extra request. A crawl made before that can get them with **Get names & photos** in the popup: your followers list again, about one request per 50 followers.
 
@@ -35,7 +35,7 @@ Requests go from an instagram.com tab with your own session, and the data stays 
 
 ### Share links
 
-**Copy share link** puts your crawl in a small shared database ([Neon](https://neon.com) Postgres), with everyone's real name and photo, and copies a link that is just your username plus what you are looking at: `#o=sebas.favaron&p=ana&n=school,work`. Who is selected, the zoom and your friend-group names ride in the link; the graph, names and photos come from the database.
+**Publish & copy link** ("Publicar y copiar link") first shows what goes public and asks; then it puts your crawl in a small shared database ([Neon](https://neon.com) Postgres), with everyone's real name and photo, and copies a link that is just your username plus what you are looking at: `#o=sebas.favaron&p=ana&n=school,work`. Who is selected, the zoom and your friend-group names ride in the link; the graph, names and photos come from the database. Once everything on screen is public, the button just says **Copy link** and uploads nothing.
 
 The database keeps one graph per person and one row per Instagram account. Someone who is in two friends' graphs is stored once, and sharing again replaces your graph instead of adding a copy (sharing twice without changes uploads nothing). The link always opens your latest share.
 

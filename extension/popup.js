@@ -117,7 +117,15 @@ $('view').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewe
 // Same kind of link the viewer's button makes: the crawl and its people's names and
 // photos go to the shared storage (store.js), and the link is just the username,
 // opening on the public page (loners included; the viewer hides them).
-$('share').onclick = async () => {
+// Publishing makes the crawl public to anyone, so the first click shows what goes up and
+// who can see it; the upload waits for the second.
+$('share').onclick = () => {
+  $('publish').hidden = false;
+  $('publish-cancel').focus();
+};
+$('publish-cancel').onclick = () => ($('publish').hidden = true);
+$('publish-go').onclick = async () => {
+  $('publish').hidden = true;
   let url;
   try {
     $('share').disabled = true;
@@ -137,7 +145,7 @@ $('share').onclick = async () => {
   } catch (err) {
     $('error').hidden = false;
     $('error').textContent = t('couldNotShare', err.message);
-    $('share').textContent = t('p.share');
+    $('share').textContent = t('shareWide');
     return;
   } finally {
     $('share').disabled = false;
@@ -148,7 +156,7 @@ $('share').onclick = async () => {
   } catch (_) {
     prompt(t('copyThisLink'), url);
   }
-  setTimeout(() => ($('share').textContent = t('p.share')), 2500);
+  setTimeout(() => ($('share').textContent = t('shareWide')), 2500);
 };
 
 chrome.storage.onChanged.addListener(() => act(() => send('getState')));

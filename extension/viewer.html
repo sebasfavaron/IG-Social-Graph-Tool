@@ -30,6 +30,11 @@
         --chip: #f6f6f6;
         --chip-hover: #ececec;
         --accent: #0b63ce;
+        --warn-bg: #fff4e5;
+        --warn-line: #e8a33d;
+        --warn-fg: #6b3d00;
+        --warn-button: #b45309;
+        --warn-button-fg: #ffffff;
         --focus: #0072b2;
         --link: #868585;
         --node: #4a4a4a;
@@ -55,6 +60,11 @@
         --chip: #161b22;
         --chip-hover: #21262d;
         --accent: #79c0ff;
+        --warn-bg: #2b1d0a;
+        --warn-line: #9a6514;
+        --warn-fg: #f5c779;
+        --warn-button: #e08a1e;
+        --warn-button-fg: #111111;
         --focus: #79c0ff;
         --link: #3d6fa8;
         --node: #8b949e;
@@ -81,6 +91,11 @@
           --chip: #161b22;
           --chip-hover: #21262d;
           --accent: #79c0ff;
+          --warn-bg: #2b1d0a;
+          --warn-line: #9a6514;
+          --warn-fg: #f5c779;
+          --warn-button: #e08a1e;
+          --warn-button-fg: #111111;
           --focus: #79c0ff;
           --link: #3d6fa8;
           --node: #8b949e;
@@ -363,6 +378,53 @@
       }
       #photo-caption .muted {
         color: rgba(255, 255, 255, 0.75);
+      }
+
+      /* ---- publish: what goes public, in warning colours ---- */
+      #publish-dialog {
+        width: min(420px, calc(100vw - 32px));
+        box-sizing: border-box;
+        padding: 16px 18px;
+        border: 1px solid var(--warn-line);
+        border-radius: 10px;
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+      }
+      #publish-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.35);
+      }
+      #publish-dialog h2 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      #publish-dialog p {
+        margin: 0 0 6px;
+        font-weight: 600;
+      }
+      #publish-dialog ul {
+        margin: 0;
+        padding-left: 18px;
+        line-height: 1.5;
+      }
+      #publish-dialog li + li {
+        margin-top: 4px;
+      }
+      #publish-dialog button:not(.warn) {
+        background: transparent;
+        border-color: var(--warn-line);
+      }
+      button.warn {
+        background: var(--warn-button);
+        border-color: var(--warn-button);
+        color: var(--warn-button-fg);
+        font-weight: 600;
+      }
+      /* the header button, while it would publish */
+      #share.publishes {
+        border-color: var(--warn-line);
+        background: var(--warn-bg);
+        color: var(--warn-fg);
       }
 
       /* ---- combine dialog ---- */
@@ -891,9 +953,8 @@
         />
         <ul id="results" role="listbox" aria-label="Personas que coinciden" data-i18n-aria-label="matchingPeople" hidden></ul>
       </div>
-      <button id="share" hidden data-i18n-title="shareTitle" title="Guarda el grafo con nombres y fotos en el almacenamiento compartido y copia un link corto. Nada de eso es privado.">
-        <span class="wide-only" data-i18n="shareWide">Copiar link</span><span class="narrow-only" data-i18n="shareNarrow">Compartir</span>
-      </button>
+      <!-- its words say whether it uploads (publish) or only copies; set by viewer.js -->
+      <button id="share" hidden><span class="wide-only"></span><span class="narrow-only"></span></button>
       <button id="combine" hidden data-i18n-title="combineTitle" title="Elegí de quiénes ver los grafos juntos">
         <span class="wide-only" data-i18n="combineWide">Combinar con amigos…</span><span class="narrow-only" data-i18n="combineNarrow">Amigos</span>
       </button>
@@ -949,6 +1010,20 @@
     <dialog id="photo-dialog" aria-labelledby="photo-caption">
       <img id="photo-big" alt="" />
       <p id="photo-caption"></p>
+    </dialog>
+
+    <dialog id="publish-dialog" aria-labelledby="publish-title">
+      <h2 id="publish-title"><span aria-hidden="true">⚠</span> <span data-i18n="publishTitle">Esto es público</span></h2>
+      <p id="publish-lead"></p>
+      <ul>
+        <li data-i18n="publishWhat"></li>
+        <li data-i18n="publishWho"></li>
+        <li data-i18n="publishReplace"></li>
+      </ul>
+      <div class="actions">
+        <button type="button" id="publish-cancel" data-i18n="cancel">Cancelar</button>
+        <button type="button" id="publish-go" class="warn" data-i18n="publishGo">Publicar y copiar link</button>
+      </div>
     </dialog>
 
     <dialog id="combine-dialog" class="panel-box" aria-labelledby="combine-title">

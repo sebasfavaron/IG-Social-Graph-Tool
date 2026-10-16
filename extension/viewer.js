@@ -187,6 +187,7 @@ function currentHash(g) {
 // Explore (explore.html, on the site) reads graphs from the shared storage, so it is
 // offered once everything on screen is stored.
 function updateExplore() {
+  updateShareButton();
   const on = !!shown && isStored();
   $('explore').hidden = !on;
   if (on) $('explore').href = `${SHARE_BASE_URL}explore.html${buildHash({ o: shown.username, m: shown.partners })}`;
@@ -775,6 +776,7 @@ function applyLanguage() {
   updateThemeButton();
   renderHeading();
   renderGroups();
+  updateShareButton();
   lastSelected = null; // repaint the person at the top of the panel too
   updatePanel();
   if ($('combine-dialog').open) renderPicker(); // not `dialog`: this can run before it is declared
@@ -1116,23 +1118,45 @@ window.addEventListener('popstate', onNavigate);
 // Share: each crawl on screen goes to the shared storage with its people's names and
 // photos (store.js), and the link carries only the owners' usernames, plus how it is
 // being looked at. A crawl already stored as shown is not sent again.
-const shareLabel = $('share').innerHTML; // read once: a click mid-"Link copied" would keep that
-// back to the button's own words, in the current language
-function restoreShare() {
-  $('share').innerHTML = shareLabel;
-  translateStatic($('share'));
+// Publishing makes it public to anyone, so the button says so in warning colours, and the
+// first click asks first; when everything is public already it only copies the link.
+// (declarations, not consts: applyLanguage can paint the button before this line runs)
+function unpublished() {
+  return [...parts].filter(([o]) => !storedOwners.has(o));
+}
+function updateShareButton() {
+  const publishes = unpublished().length > 0;
+  const button = $('share');
+  button.classList.toggle('publishes', publishes);
+  button.title = t(publishes ? 'shareTitle' : 'copyTitle');
+  button.replaceChildren(
+    Object.assign(document.createElement('span'), { className: 'wide-only', textContent: t(publishes ? 'shareWide' : 'copyWide') }),
+    Object.assign(document.createElement('span'), { className: 'narrow-only', textContent: t(publishes ? 'shareNarrow' : 'copyNarrow') })
+  );
 }
 let shareFlash = null;
-$('share').onclick = async () => {
+$('share').onclick = () => {
   if (!shown) return;
+  const missing = unpublished();
+  if (!missing.length) return share();
+  $('publish-lead').textContent = t('publishLead', missing.map(([o]) => `@${o}`).join(' + '));
+  $('publish-dialog').showModal();
+  $('publish-cancel').focus(); // the safe choice is the one Enter picks
+};
+$('publish-cancel').onclick = () => $('publish-dialog').close();
+$('publish-go').onclick = () => {
+  $('publish-dialog').close();
+  share();
+};
+async function share() {
   const button = $('share');
   clearTimeout(shareFlash);
   const flash = (text) => {
     button.textContent = text;
-    shareFlash = setTimeout(restoreShare, 2500);
+    shareFlash = setTimeout(updateShareButton, 2500);
   };
   try {
-    const missing = [...parts].filter(([o]) => !storedOwners.has(o));
+    const missing = unpublished();
     if (missing.length) {
       button.disabled = true;
       button.textContent = t('uploading');
@@ -1150,7 +1174,7 @@ $('share').onclick = async () => {
     }
     if (!isStored() && !encoded) encoded = await encodeGraph(shown);
   } catch (err) {
-    restoreShare();
+    updateShareButton();
     alert(t('couldNotShare', err.message));
     return;
   } finally {
@@ -1162,10 +1186,10 @@ $('share').onclick = async () => {
     flash(t('linkCopied'));
   } catch (_) {
     // the upload took long enough for the browser to stop treating this as a click
-    restoreShare();
+    updateShareButton();
     prompt(t('copyThisLink'), url);
   }
-};
+}
 
 
 // Search: type part of a username; the highlighted match is selected in the graph as you

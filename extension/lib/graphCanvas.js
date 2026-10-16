@@ -143,7 +143,8 @@ export function drawGraph(
     frameRequested = true;
     requestAnimationFrame(() => {
       frameRequested = false;
-      draw();
+      // a frame asked for before destroy() would paint this graph over the next one
+      if (!destroyed) draw();
     });
   }
 
