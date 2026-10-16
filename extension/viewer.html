@@ -469,9 +469,6 @@
         min-height: 1.4em;
         margin: 6px 0 0 !important;
       }
-      #paste-box {
-        margin-top: 6px;
-      }
       /* home: the list is the page, a panel on the left below the header */
       body.home #combine-dialog {
         position: fixed;
@@ -502,32 +499,6 @@
         body.home #combine-dialog {
           max-height: calc(100vh - var(--below-header, 70px) - 60px);
         }
-      }
-      #paste-box summary {
-        cursor: pointer;
-      }
-      .paste-row {
-        display: flex;
-        gap: 8px;
-        margin-top: 8px;
-      }
-      #combine-link {
-        flex: 1;
-        min-width: 0;
-        box-sizing: border-box;
-        padding: 6px 8px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        background: var(--chip);
-        color: inherit;
-        font: inherit;
-      }
-      .error {
-        color: #c62828;
-        margin-top: 8px !important;
-      }
-      .error[hidden] {
-        display: none;
       }
       .actions {
         display: flex;
@@ -987,17 +958,6 @@
       <input id="picker-filter" type="search" placeholder="Buscar entre los grafos" data-i18n-placeholder="pickerFilter" autocomplete="off" spellcheck="false" hidden />
       <ul id="picker-list" aria-labelledby="combine-title"></ul>
       <p id="picker-status" class="muted" role="status"></p>
-      <details id="paste-box">
-        <summary class="muted" data-i18n="pasteSummary">¿Te pasaron un link? Pegalo acá</summary>
-        <form id="combine-form">
-          <label for="combine-link" class="sr-only" data-i18n="friendLink">Link de tu amigo</label>
-          <div class="paste-row">
-            <input id="combine-link" type="text" inputmode="url" placeholder="https://…#o=…" autocomplete="off" spellcheck="false" required />
-            <button type="submit" id="combine-go" data-i18n="pasteAdd">Agregar</button>
-          </div>
-          <p id="combine-error" class="error" role="alert" hidden></p>
-        </form>
-      </details>
       <div class="actions">
         <button type="button" id="combine-cancel" data-i18n="cancel">Cancelar</button>
         <button type="button" id="picker-go" class="primary">Ver</button>

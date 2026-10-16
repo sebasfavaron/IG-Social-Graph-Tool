@@ -884,7 +884,7 @@ async function copyOver(full, partners, ref) {
   return owners;
 }
 
-// ---- combine: pick from everyone who shared, or paste a link -----------------------
+// ---- combine: pick from everyone who shared ------------------------------------------
 // Everything stored is public among friends, so the menu lists every shared graph
 // (list_graphs) and the ones ticked are drawn together, in the order they were ticked.
 const dialog = $('combine-dialog');
@@ -907,15 +907,13 @@ function leaveHome() {
   $('combine-dialog').close();
 }
 function openPicker() {
-  $('combine-error').hidden = true;
-  $('combine-link').value = '';
   $('picker-filter').value = '';
   chosen = [...parts.keys()];
   renderPicker();
   if (document.body.classList.contains('home')) {
     dialog.show();
-    // a dialog focuses its first control on opening, here the folded "got a link?" line,
-    // which drew a focus ring on a page nobody had touched yet
+    // a dialog focuses its first control on opening, which drew a focus ring on a page
+    // nobody had touched yet
     if (dialog.contains(document.activeElement)) document.activeElement.blur();
   } else {
     dialog.showModal();
@@ -1026,56 +1024,6 @@ async function showOwners(owners) {
   await showing;
   syncUrl();
 }
-$('combine-form').onsubmit = async (e) => {
-  e.preventDefault();
-  const fail = (text) => {
-    $('combine-error').textContent = text;
-    $('combine-error').hidden = false;
-  };
-  const text = $('combine-link').value.trim();
-  const at = text.search(/#[gso]=/);
-  const state = at >= 0 ? parseHash(text.slice(at)) : null;
-  if (!state?.g && !state?.s && !state?.o) return fail(t('notALink'));
-  if (state.m.length && shown) return fail(t('alreadyCombined'));
-  if (!shown) {
-    // nothing on screen to combine with: just open the link
-    dialog.close();
-    location.hash = text.slice(at);
-    return;
-  }
-  $('combine-go').disabled = true;
-  try {
-    let friend;
-    let friendStored = false;
-    if (state.s) {
-      // an old link: copied over first, then read like any stored one
-      const owners = await copyOver(await openFullShare(state.s, state.k), [], state.s);
-      if (!owners) throw new Error(t('noOwner'));
-      state.o = owners[0];
-    }
-    if (state.o) {
-      // their names and photos come after the graph is drawn (fillPeople); ours win
-      friend = (await openStored(state.o)).graph;
-      friendStored = true;
-    } else {
-      friend = await decodeGraph(state.g);
-    }
-    // each crawl on screen plus theirs
-    const crawls = [...(parts.size ? parts.values() : [shown]), friend];
-    const merged = mergeGraphs(...crawls);
-    const stored = [...storedOwners].filter((o) => parts.has(o));
-    if (friendStored) stored.push(friend.username);
-    dialog.close();
-    const showing = show(merged, { crawls, stored });
-    if (friendStored) fillPeople(merged);
-    await showing;
-    syncUrl();
-  } catch (err) {
-    fail(t('couldNotCombine', err.message));
-  } finally {
-    $('combine-go').disabled = false;
-  }
-};
 // One person's graph out of the combined one on screen: their own crawl when it is here
 // (the extension's, unsaved changes and all), otherwise from the shared storage.
 function showOnly(owner) {
