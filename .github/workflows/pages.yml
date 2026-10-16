@@ -31,7 +31,10 @@ jobs:
           cp extension/viewer.html _site/index.html
           cp extension/viewer.js extension/explore.html extension/explore.js _site/
           cp -R extension/lib extension/vendor _site/
-          cp extension/icon128.png _site/
+          cp extension/icon128.png extension/install.html _site/
+          # what install.html downloads: the extension's files at the zip's top level, so
+          # double-clicking it (macOS) or "Extract all" (Windows) gives one folder to load
+          (cd extension && zip -qr -X ../_site/ig-social-graph.zip . -x 'explore.*' 'install.html')
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
