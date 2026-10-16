@@ -63,3 +63,24 @@ export function circles({ links, username, partner }) {
   }
   return { circleOf, sizes };
 }
+
+// One owner's graph back out of a merged one: them, everyone linked to them, and every
+// follow among those people. Old merged share links carried no other copy of each crawl.
+// A follow among those people that only the other crawl saw comes along; it is real too.
+export function ownGraph({ links }, owner) {
+  const ids = new Set([owner]);
+  for (const l of links) {
+    const s = idOf(l.source);
+    const t = idOf(l.target);
+    if (s === owner) ids.add(t);
+    else if (t === owner) ids.add(s);
+  }
+  return {
+    username: owner,
+    metadata: { loggedUsername: owner, generatedBy: 'split' },
+    nodes: [...ids].map((id) => ({ id, group: 1 })),
+    links: links
+      .filter((l) => ids.has(idOf(l.source)) && ids.has(idOf(l.target)))
+      .map((l) => ({ source: idOf(l.source), target: idOf(l.target), value: 1 })),
+  };
+}

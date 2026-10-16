@@ -1,6 +1,7 @@
 import { toGraph } from './lib/crawler.js';
 import { SHARE_BASE_URL, buildHash, encodeGraph } from './lib/share.js';
-import { createShare, photosFromThumbs } from './lib/vault.js';
+import { photosFromThumbs } from './lib/vault.js';
+import { saveGraph } from './lib/store.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -102,8 +103,9 @@ $('reset').onclick = () => {
   if (confirm('Delete everything collected so far?')) act(() => send('reset'));
 };
 $('view').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
-// Same kind of link the viewer's button makes: names and photos included, encrypted and
-// stored, opening on the public page (loners included; the viewer hides them).
+// Same kind of link the viewer's button makes: the crawl and its people's names and
+// photos go to the shared storage (store.js), and the link is just the username,
+// opening on the public page (loners included; the viewer hides them).
 $('share').onclick = async () => {
   const label = $('share').textContent;
   let url;
@@ -112,13 +114,16 @@ $('share').onclick = async () => {
     $('share').textContent = 'Uploading…';
     const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
     const graph = toGraph(crawl);
-    const ref = await createShare({
+    const owner = graph.username || graph.metadata?.loggedUsername;
+    if (!owner) throw new Error('the crawl does not say whose graph it is');
+    await saveGraph({
+      owner,
       g: await encodeGraph(graph),
       ids: new Set(graph.nodes.map((n) => n.id)),
       profiles: crawl.profiles,
       photos: photosFromThumbs(thumbs),
     });
-    url = SHARE_BASE_URL + buildHash(ref);
+    url = SHARE_BASE_URL + buildHash({ o: owner });
   } catch (err) {
     $('error').hidden = false;
     $('error').textContent = `Could not share: ${err.message}.`;

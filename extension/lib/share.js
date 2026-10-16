@@ -21,7 +21,8 @@ import { friendGroups } from './groups.js';
 // Breaking changes are fine for now: version 1 links no longer open.
 
 export const SHARE_PREFIX = '#g=';
-export const FULL_SHARE_PREFIX = '#s='; // names and photos too, in an encrypted gist (vault.js)
+export const FULL_SHARE_PREFIX = '#s='; // old: names and photos too, encrypted (vault.js)
+export const OWNER_PREFIX = '#o='; // a graph in the shared storage, by its owner (store.js)
 // Where share links point, also when made from inside the extension.
 export const SHARE_BASE_URL = 'https://sebasfavaron.github.io/IG-Social-Graph-Tool/';
 const VERSION = 2;
@@ -212,7 +213,9 @@ export async function decodeGraph(encoded) {
 //   #g=<graph>&p=<selected username>&c=<follower|following|mutual>&v=<x>,<y>,<zoom>
 //   &n=<name of group 1>,<name of group 2>,…   (empty = unnamed; groups are numbered by size)
 //   &m=<second owner>   two people's graphs merged (merge.js); the first owner is in g
-// A full share starts  #s=<github user>/<gist id>&k=<key>  instead of g=, same rest.
+// A stored graph starts  #o=<owner>  instead of g=, same rest; with m= both owners'
+// graphs are read from the storage and merged. Older full shares start
+// #s=<share id>&k=<key>.
 //
 // Every character here is one RFC 3986 allows in a fragment. iOS (share sheet, Messages,
 // links opened from other apps) percent-escapes anything else: names used to be joined with
@@ -222,8 +225,8 @@ export async function decodeGraph(encoded) {
 // viewer moves the view by hand, so a fresh link fits whatever screen opens it.
 export const MAX_GROUP_NAME = 30;
 
-export function buildHash({ g, s, k, p, c, v, n, m }) {
-  const parts = s ? [`s=${s}`, `k=${k}`] : [`g=${g}`];
+export function buildHash({ o, g, s, k, p, c, v, n, m }) {
+  const parts = o ? [`o=${encodeURIComponent(o)}`] : s ? [`s=${s}`, `k=${k}`] : [`g=${g}`];
   if (m) parts.push(`m=${encodeURIComponent(m)}`);
   if (p) parts.push(`p=${encodeURIComponent(p)}`);
   if (p && c) parts.push(`c=${c}`);
@@ -237,11 +240,12 @@ export function buildHash({ g, s, k, p, c, v, n, m }) {
 }
 
 export function parseHash(hash) {
-  if (!hash.startsWith(SHARE_PREFIX) && !hash.startsWith(FULL_SHARE_PREFIX)) return null;
+  if (![SHARE_PREFIX, FULL_SHARE_PREFIX, OWNER_PREFIX].some((prefix) => hash.startsWith(prefix))) return null;
   const params = new URLSearchParams(hash.slice(1));
   const [x, y, k] = (params.get('v') || '').split(',').map(Number);
   const category = params.get('c');
   return {
+    o: params.get('o'),
     g: params.get('g'),
     s: params.get('s'),
     k: params.get('k'),

@@ -4,9 +4,10 @@ import { EXAMPLE_GRAPH } from './lib/example.js';
 import { pruneLoneNodes } from './lib/prune.js';
 import { friendGroups } from './lib/groups.js';
 import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
-import { createShare, downloadShare, photosFromThumbs, unpackShare, unseal } from './lib/vault.js';
+import { downloadShare, photosFromThumbs, unpackShare, unseal } from './lib/vault.js';
+import { loadGraph, loadPeople, saveGraph } from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
-import { CIRCLE, circles, mergeGraphs } from './lib/merge.js';
+import { CIRCLE, circles, mergeGraphs, ownGraph } from './lib/merge.js';
 
 const INSTALL_URL = 'https://github.com/sebasfavaron/IG-Social-Graph-Tool#map-your-own-followers-chrome-extension';
 
@@ -25,7 +26,11 @@ let profiles = {}; // username -> { name, pic, private, verified }
 let photos = new Map(); // username -> data URL
 let ownProfiles = {}; // the crawl's, to go back to after looking at someone's full share
 let ownPhotos = new Map();
-let shareRef = null; // { s, k } when the graph on screen came from a full-share link
+// The graph on screen as one crawl per owner (two when combined), and which of those
+// owners' crawls are in the shared storage exactly as shown: when all are, the link is
+// just their usernames (#o=).
+let parts = new Map(); // owner -> graph
+let storedOwners = new Set();
 const nameOf = (id) => profiles[id]?.name || '';
 // lower case without accents, so "jose" finds "José"
 const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
@@ -33,10 +38,15 @@ const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase(
 const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 // encodedGraph: the packed form when the graph came from a link, so it is not redone.
+// crawls: the one-owner graphs a combined graph was made of; stored: owners whose crawl
+// on screen is the one in the shared storage.
 // Resolves once the layout is in, so callers can select and move the view.
-async function show(graph, { encodedGraph = null, fullShare = null } = {}) {
-  shareRef = fullShare;
+async function show(graph, { encodedGraph = null, crawls = null, stored = [] } = {}) {
   const username = graph.username || graph.metadata?.loggedUsername;
+  // the example is nobody's: it never goes to the storage, and shares as a #g= link
+  const example = graph.metadata?.generatedBy === 'example';
+  parts = crawls ? new Map(crawls.map((c) => [c.username, c])) : new Map(username && !example ? [[username, graph]] : []);
+  storedOwners = new Set(stored);
   const partner = graph.partner && graph.nodes.some((n) => n.id === graph.partner) ? graph.partner : null;
   const total = graph.nodes.length;
   const pruned = pruneLoneNodes(graph);
@@ -98,7 +108,9 @@ async function show(graph, { encodedGraph = null, fullShare = null } = {}) {
   viewTouched = false;
   encoded = encodedGraph;
   if (!inExtension && !encodedGraph) {
-    history.replaceState(null, '', location.pathname + location.search); // drop a stale link
+    // drop a stale link; a stored graph's short one is rebuilt right away
+    if (isStored()) syncUrl();
+    else history.replaceState(null, '', location.pathname + location.search);
     const packing = shown;
     if (packing) {
       encodeGraph(packing).then((g) => {
@@ -132,12 +144,14 @@ function viewState() {
     m: shown?.partner,
   };
 }
+// #o= when every crawl on screen is in the shared storage; the graph itself otherwise
+const isStored = () => parts.size > 0 && [...parts.keys()].every((o) => storedOwners.has(o));
 function currentHash(g) {
-  return buildHash({ g, ...(shareRef || {}), ...viewState() });
+  return buildHash({ ...(isStored() ? { o: shown.username } : { g }), ...viewState() });
 }
 let syncTimer = null;
 function syncUrl() {
-  if (inExtension || !encoded) return;
+  if (inExtension || (!encoded && !isStored())) return;
   clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {
     history.replaceState(null, '', location.pathname + location.search + currentHash(encoded));
@@ -685,9 +699,46 @@ document.addEventListener('keydown', (e) => {
 
 $('example').onclick = () => show(EXAMPLE_GRAPH);
 
-// ---- full share: names and photos too, encrypted, in the share storage (vault.js) ---
+// ---- shared storage (store.js): a crawl per owner, people once ----------------------
+// -> { graph, crawls } for #o=owner (and m=partner: both crawls, merged); names and
+// photos come along into profiles/photos.
+async function openStored(owner, partner) {
+  const owners = partner ? [owner, partner] : [owner];
+  const crawls = await Promise.all(
+    owners.map(async (o) => {
+      const g = await loadGraph(o);
+      if (!g) throw new Error(`@${o} has not shared a graph yet`);
+      return decodeGraph(g);
+    })
+  );
+  const graph = partner ? mergeGraphs(crawls[0], crawls[1]) : crawls[0];
+  const people = await loadPeople(graph.nodes.map((n) => n.id));
+  return { graph, crawls, ...people };
+}
+
+// Links from before the shared storage: names and photos, encrypted (vault.js). Opening
+// one copies its crawls over (a combined one is split back into each owner's), without
+// replacing anything stored since. -> the owners now stored, or null when it could not.
 async function openFullShare(ref, key) {
   return unpackShare(await unseal(await downloadShare(ref), key));
+}
+async function copyOver(full, partner) {
+  const graph = await decodeGraph(full.g);
+  const owner = graph.username;
+  if (!owner) return null;
+  const owners = partner ? [owner, partner] : [owner];
+  for (const o of owners) {
+    const crawl = partner ? ownGraph(graph, o) : graph;
+    await saveGraph({
+      owner: o,
+      g: partner ? await encodeGraph(crawl) : full.g,
+      ids: new Set(crawl.nodes.map((n) => n.id)),
+      profiles: full.profiles,
+      photos: full.photos,
+      onlyIfMissing: true,
+    });
+  }
+  return owners;
 }
 
 // ---- combine: a friend's share link drawn together with this graph -----------------
@@ -705,53 +756,84 @@ $('combine-form').onsubmit = async (e) => {
     $('combine-error').hidden = false;
   };
   const text = $('combine-link').value.trim();
-  const at = text.search(/#[gs]=/);
+  const at = text.search(/#[gso]=/);
   const state = at >= 0 ? parseHash(text.slice(at)) : null;
-  if (!state?.g && !state?.s) return fail('That is not a share link: they contain "#g=" or "#s=" after the address.');
+  if (!state?.g && !state?.s && !state?.o) return fail('That is not a share link: they contain "#o=" after the address.');
   if (state.m) return fail('That link already combines two people. Ask for one with only theirs.');
   if (!shown) return;
   $('combine-go').disabled = true;
   try {
     let friend;
+    let friendStored = false;
     if (state.s) {
-      // a full share brings their names and photos; ours win where both have someone
-      const full = await openFullShare(state.s, state.k);
-      friend = await decodeGraph(full.g);
-      profiles = { ...full.profiles, ...profiles };
-      photos = new Map([...full.photos, ...photos]);
+      // an old link: copied over first, then read like any stored one
+      const owners = await copyOver(await openFullShare(state.s, state.k));
+      if (!owners) throw new Error('that link does not say whose graph it is');
+      state.o = owners[0];
+    }
+    if (state.o) {
+      const opened = await openStored(state.o);
+      friend = opened.graph;
+      friendStored = true;
+      // ours win where both have someone
+      profiles = { ...opened.profiles, ...profiles };
+      photos = new Map([...opened.photos, ...photos]);
     } else {
       friend = await decodeGraph(state.g);
     }
     const merged = mergeGraphs(shown, friend);
     const original = shown;
+    const stored = [...storedOwners].filter((o) => o === original.username);
+    if (friendStored) stored.push(friend.username);
     dialog.close();
-    await show(merged);
+    await show(merged, { crawls: [original, friend], stored });
     beforeMerge = original;
     $('uncombine').hidden = false;
     $('uncombine').querySelector('.label').textContent = `@${original.username} only`;
+    syncUrl();
   } catch (err) {
     fail(`Could not combine: ${err.message}.`);
   } finally {
     $('combine-go').disabled = false;
   }
 };
-$('uncombine').onclick = () => beforeMerge && show(beforeMerge);
+$('uncombine').onclick = () => {
+  if (!beforeMerge) return;
+  const owner = beforeMerge.username;
+  show(beforeMerge, { stored: storedOwners.has(owner) ? [owner] : [] }).then(syncUrl);
+};
 
 // Share: the graph on screen and how it is being looked at travel inside the link (after
 // "#", never sent to a server). From the extension the link points at the public page.
 async function openShareHash() {
   const state = parseHash(location.hash);
-  if (!state?.g && !state?.s) return false;
+  if (!state?.g && !state?.s && !state?.o) return false;
   try {
-    if (state.s && state.s !== shareRef?.s) {
+    if (state.s) {
       $('counts').textContent = 'Opening the shared graph…';
       const full = await openFullShare(state.s, state.k);
+      const owners = await copyOver(full, state.m).catch(() => null);
+      if (owners) {
+        // from now on the address is the short one, read from the shared storage
+        const hash = buildHash({ ...state, s: null, o: owners[0] });
+        history.replaceState(null, '', location.pathname + location.search + hash);
+        return openShareHash();
+      }
       profiles = full.profiles;
       photos = full.photos;
       const graph = await decodeGraph(full.g);
       if (state.m) graph.partner = state.m;
-      await show(graph, { encodedGraph: full.g, fullShare: { s: state.s, k: state.k } });
-    } else if (state.g && (state.g !== encoded || shareRef)) {
+      await show(graph, { encodedGraph: full.g });
+    } else if (state.o) {
+      const sameOnScreen = isStored() && shown?.username === state.o && (shown.partner || null) === state.m;
+      if (!sameOnScreen) {
+        $('counts').textContent = 'Opening the shared graph…';
+        const opened = await openStored(state.o, state.m);
+        profiles = opened.profiles;
+        photos = opened.photos;
+        await show(opened.graph, { crawls: opened.crawls, stored: opened.crawls.map((c) => c.username) });
+      }
+    } else if (state.g && (state.g !== encoded || isStored())) {
       profiles = ownProfiles;
       photos = ownPhotos;
       const graph = await decodeGraph(state.g);
@@ -760,7 +842,7 @@ async function openShareHash() {
     }
   } catch (err) {
     alert(`This share link did not open: ${err.message}. Ask for it again.`);
-    if (state.s) $('counts').textContent = '';
+    if (state.s || state.o) $('counts').textContent = '';
     return false;
   }
   if (!graphControl) return true;
@@ -780,13 +862,14 @@ async function openShareHash() {
     renderGroups();
   }
   updatePanel();
+  syncUrl(); // the layout can outlast the address's first rewrite, which had no view yet
   return true;
 }
 window.addEventListener('hashchange', openShareHash); // someone pasted or edited a link
 
-// Share: the graph with names and photos, encrypted and stored (vault.js); the link
-// carries its id and key, plus how it is being looked at. Sharing the same graph again,
-// or one that came from a share link, reuses that upload.
+// Share: each crawl on screen goes to the shared storage with its people's names and
+// photos (store.js), and the link carries only the owners' usernames, plus how it is
+// being looked at. A crawl already stored as shown is not sent again.
 const shareLabel = $('share').innerHTML; // read once: a click mid-"Link copied" would keep that
 let shareFlash = null;
 $('share').onclick = async () => {
@@ -799,17 +882,23 @@ $('share').onclick = async () => {
     shareFlash = setTimeout(() => (button.innerHTML = label), 2500);
   };
   try {
-    if (!shareRef) {
+    const missing = [...parts].filter(([o]) => !storedOwners.has(o));
+    if (missing.length) {
       button.disabled = true;
       button.textContent = 'Uploading…';
-      shareRef = await createShare({
-        g: encoded || (await encodeGraph(shown)),
-        ids: new Set(shown.nodes.map((n) => n.id)),
-        profiles,
-        photos,
-      });
+      for (const [owner, crawl] of missing) {
+        await saveGraph({
+          owner,
+          g: crawl === shown && encoded ? encoded : await encodeGraph(crawl),
+          ids: new Set(crawl.nodes.map((n) => n.id)),
+          profiles,
+          photos,
+        });
+        storedOwners.add(owner);
+      }
       syncUrl(); // on the site the address bar becomes the short link too
     }
+    if (!isStored() && !encoded) encoded = await encodeGraph(shown);
   } catch (err) {
     button.innerHTML = label;
     alert(`Could not share: ${err.message}.`);
@@ -817,7 +906,7 @@ $('share').onclick = async () => {
   } finally {
     button.disabled = false;
   }
-  const url = SHARE_BASE_URL + buildHash({ ...shareRef, ...viewState() });
+  const url = SHARE_BASE_URL + currentHash(encoded);
   try {
     await navigator.clipboard.writeText(url);
     flash('Link copied');

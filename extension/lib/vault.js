@@ -1,3 +1,5 @@
+// Old full shares, from before the shared storage in store.js: links made then still
+// open, and the viewer copies them over (unencrypted) the first time one is opened.
 // Full shares: the graph plus real names and photos, too big for a link (~3 MB for 460
 // people), so they are stored in a small database instead. Everything is encrypted in the
 // browser first and the key travels only after the "#" of the link, which browsers never
@@ -11,6 +13,8 @@
 //   header: { g: <graph as in a #g= link>, profiles: { user: [name, flags] },
 //             photos: [[user, byte length, mime], ...] }   flags: 1 private | 2 verified
 // Photos stay binary (base64 inside JSON, then base64 again, would add 77%).
+
+import { sharesQuery } from './store.js';
 
 const MAGIC = [73, 71, 83, 49]; // "IGS1"
 
@@ -106,48 +110,11 @@ export async function unseal(content, keyText) {
   }
 }
 
-// ---- storage: a Neon Postgres database (db/shares.sql) ------------------------------
-// Browsers talk to it over Neon's HTTP SQL endpoint as share_client. That password is
-// public on purpose: the role can only call create_share and get_share, which save one
-// share or read one by its random id, within size and rate caps. It cannot list, change
-// or delete anything.
-const SHARES_HOST = 'ep-empty-sun-b68xcfin-pooler.c-2.sa-east-1.aws.neon.tech';
-const SHARES_DB = `postgresql://share_client:a6ecb5e19602ba40f6e83f7696a701f80f5de12015404400@${SHARES_HOST}/neondb?sslmode=require`;
-
-async function sharesQuery(query, params, fetchImpl) {
-  const res = await fetchImpl(`https://${SHARES_HOST}/sql`, {
-    method: 'POST',
-    headers: {
-      'Neon-Connection-String': SHARES_DB,
-      'Neon-Array-Mode': 'true',
-      // text/plain: Neon's CORS answer does not list Content-Type, and a JSON body sent as
-      // text/plain is read the same
-      'Content-Type': 'text/plain;charset=UTF-8',
-    },
-    body: JSON.stringify({ query, params }),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.message || `the share storage answered ${res.status}`);
-  return json.rows;
-}
-
-// content: base64 from seal() -> the share's id (32 hex characters)
+// ---- storage: the old `shares` table (db/shares.sql), read only now ----------------
+// content: base64 from seal() -> the share's id; kept for tests and older extensions
 export async function uploadShare(content, { fetchImpl = fetch } = {}) {
   const [[id]] = await sharesQuery('select create_share($1)', [content], fetchImpl);
   return id;
-}
-
-// The whole share step: keeps only the people in the graph, packs, encrypts, stores.
-// ids: Set of usernames in the graph (profiles and photos of anyone else stay behind).
-// -> { s: share id, k: key }, ready for buildHash
-export async function createShare({ g, ids, profiles = {}, photos = new Map() }, options) {
-  const packed = await packShare({
-    g,
-    profiles: Object.fromEntries(Object.entries(profiles).filter(([u]) => ids.has(u))),
-    photos: new Map([...photos].filter(([u]) => ids.has(u))),
-  });
-  const { key, content } = await seal(packed);
-  return { s: await uploadShare(content, options), k: key };
 }
 
 // The extension's saved photos ({ username: { src, data } }) as username -> data URL.

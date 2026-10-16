@@ -33,23 +33,21 @@ Requests go from an instagram.com tab with your own session, and the data stays 
 
 ### Share links
 
-**Copy share link** shares everything you see: the graph, real names and photos (~3 MB for 460 people), plus who is selected, the zoom and your friend-group names. That is too big for a link, so:
+**Copy share link** puts your crawl in a small shared database ([Neon](https://neon.com) Postgres), with everyone's real name and photo, and copies a link that is just your username plus what you are looking at: `#o=sebas.favaron&p=ana&n=school,work`. Who is selected, the zoom and your friend-group names ride in the link; the graph, names and photos come from the database.
 
-1. it is encrypted in your browser with a new random key;
-2. the encrypted bytes are stored in a small database ([Neon](https://neon.com) Postgres);
-3. the link (~110 characters) carries the share's id and, after the `#`, the key.
+The database keeps one graph per person and one row per Instagram account. Someone who is in two friends' graphs is stored once, and sharing again replaces your graph instead of adding a copy (sharing twice without changes uploads nothing). The link always opens your latest share.
 
-Browsers never send what comes after the `#` to a server, so the database holds bytes it cannot read. The link is what gives access: anyone who gets it sees those people, their names and photos, and who follows whom. Sharing the same graph again reuses its upload. Nobody needs an account, and opening the link needs no extension. On the site the address bar holds the current link once shared, so copying it from there works too.
-
-The browser connects with a password that is in the code, so anyone can use it, and it can do exactly two things ([`db/shares.sql`](./db/shares.sql)): save one share and get its random id back, or read one share by id. It cannot list, change or delete shares. Uploads stop at 8 MB each, 60 an hour and 400 MB in total, which keeps strangers from filling the free tier.
+**Nothing in it is private.** The browser connects with a password that is in the code, so anyone can read every graph, name and photo there, and save a graph under any username ([`db/graphs.sql`](./db/graphs.sql)). It suits friends playing with it. Uploads stop at 2 MB per graph, 60 graphs an hour and 400 MB in total, which keeps strangers from filling the free tier.
 
 ### Combine two people's graphs
 
-**Combine with a friend…** takes a share link a friend made and draws both graphs as one. The key switches from friend groups to circles: the people you both know, the ones only you know, the ones only they know. Point at a circle to highlight its people. The combined graph has its own share link, and **@you only** goes back.
+**Combine with a friend…** takes a share link a friend made and draws both graphs as one; nothing new is uploaded, and the combined link is both usernames (`#o=you&m=friend`). The key switches from friend groups to circles: the people you both know, the ones only you know, the ones only they know. Point at a circle to highlight its people. The combined graph has its own share link, and **@you only** goes back.
 
 ### Older links
 
 Links made before shares were stored carry the whole graph after `#g=` (~10 000 characters, usernames only), in a format built for these graphs: each pair of people is stored once with its direction, your own links are two bits per person, and people are numbered friend group by friend group so neighbours get nearby numbers. They still open, as do links to GitHub gists from a short while when shares went there.
+
+Links from before the shared database (`#s=…&k=…`) were encrypted, and only the link holds the key. Opening one copies its graph, names and photos into the database (a combined one is split back into each person's graph), never replacing a newer share, and the address becomes the short `#o=` link.
 
 The site is the extension's viewer, published from `extension/` by [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) on every push to `main` that touches it.
 
@@ -66,7 +64,8 @@ The site is the extension's viewer, published from `extension/` by [`.github/wor
 ### Develop
 
 - After editing, hit the reload icon on the extension's card in `chrome://extensions`. Chrome keeps the old background worker running until then, while the popup is read fresh each time.
-- The share storage is the Neon project linked in `neon.ts` (`neon login`, then `neon env pull` writes the owner's connection strings to `.env.local`, which git ignores). To set it up again: `psql "$DATABASE_URL_UNPOOLED" -v client_password=… -f db/shares.sql`, then put that password in `SHARES_DB` in `vault.js`.
+- The share storage is the Neon project linked in `neon.ts` (`neon login`, then `neon env pull` writes the owner's connection strings to `.env.local`, which git ignores). To set it up again: `psql "$DATABASE_URL_UNPOOLED" -v client_password=… -f db/shares.sql`, then `psql "$DATABASE_URL_UNPOOLED" -f db/graphs.sql`, then put that password in `SHARES_DB` in `store.js`.
+- A preview of the viewer that is hidden (a background tab) never finishes opening a link: the view is restored after the first animation frame, which hidden pages do not run.
 - `npm test` (Node 22) runs the crawler against a fake Instagram, plus the share-link format, friend groups and layout.
 - Endpoints used (web app id `936619743392459`): `/api/v1/friendships/{pk}/followers/` and `/api/v1/friendships/{pk}/mutual_followers/`, paginated with `max_id` / `next_max_id`.
 
@@ -80,7 +79,8 @@ The site is the extension's viewer, published from `extension/` by [`.github/wor
 | `extension/lib/groups.js` | friend groups by modularity (Louvain) |
 | `extension/lib/groupNames.js` | keeps each friend-group name on its group across crawls |
 | `extension/lib/merge.js` | combines two graphs and tells whose circle each person is in |
-| `extension/lib/vault.js` | full shares: packs names and photos, encrypts (AES-GCM), stores and reads them through Neon's HTTP SQL endpoint |
+| `extension/lib/store.js` | shared database: saves and reads graphs by owner and people by username through Neon's HTTP SQL endpoint |
+| `extension/lib/vault.js` | older encrypted shares: reads them so the viewer can copy them over |
 | `db/shares.sql` | the share storage: table, the two functions, the public role allowed to call only those |
 | `extension/lib/share.js` | packs the graph and view state into the link: `#g=…&p=…&c=…&v=…&n=…&m=…` |
 | `extension/viewer.html`, `viewer.js` | the page: panel, search, groups key, themes, link state |
