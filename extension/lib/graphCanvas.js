@@ -134,6 +134,7 @@ export function drawGraph(
   // ---- drawing ----------------------------------------------------------------------
   let transform = d3.zoomIdentity;
   let laidOut = false;
+  let settling = false; // the worker's positions so far are on screen, not the final ones
   let progress = 0;
   let frameRequested = false;
 
@@ -323,7 +324,7 @@ export function drawGraph(
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, width, height);
-    if (!laidOut) {
+    if (!laidOut && !settling) {
       ctx.fillStyle = colors.muted;
       ctx.font = '13px system-ui, sans-serif';
       ctx.textAlign = 'center';
@@ -429,7 +430,7 @@ export function drawGraph(
 
     // names, decluttered; hidden when zoomed far out (they would be a few unreadable ones)
     labelSpots = new Map();
-    if (k > 0.25 || showSel) {
+    if (laidOut && (k > 0.25 || showSel)) {
       const placed = placeLabels(visible, k);
       ctx.textBaseline = 'middle';
       const line = (textSize * 0.62) / k; // half the gap between the two lines' centres
@@ -586,16 +587,20 @@ export function drawGraph(
 
   // ---- layout + view ----------------------------------------------------------------
   let centroid = { x: 0, y: 0 };
-  function fitToView() {
-    const shown = nodes.filter((n) => !n.hidden);
-    const xs = shown.map((d) => d.x);
-    const ys = shown.map((d) => d.y);
-    const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  function fitTransform() {
+    let [minX, maxX, minY, maxY] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (const n of nodes) {
+      if (n.hidden) continue;
+      if (n.x < minX) minX = n.x;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.y > maxY) maxY = n.y;
+    }
     const k = Math.min(4, 0.9 * Math.min(width / (maxX - minX || 1), height / (maxY - minY || 1)));
-    canvasSel.call(
-      zoom.transform,
-      d3.zoomIdentity.translate(width / 2 - (k * (minX + maxX)) / 2, height / 2 - (k * (minY + maxY)) / 2).scale(k)
-    );
+    return d3.zoomIdentity.translate(width / 2 - (k * (minX + maxX)) / 2, height / 2 - (k * (minY + maxY)) / 2).scale(k);
+  }
+  function fitToView() {
+    canvasSel.call(zoom.transform, fitTransform());
   }
 
   const linkIndexes = new Int32Array(links.length * 2);
@@ -606,8 +611,18 @@ export function drawGraph(
   const layout = computeLayout(
     nodes.map((n) => n.id),
     linkIndexes,
-    (p) => {
+    (p, partial) => {
       progress = p;
+      if (partial && !laidOut && !destroyed) {
+        // draw the graph settling, fitted to the screen, until the final positions come
+        nodes.forEach((n, i) => {
+          n.x = partial[2 * i];
+          n.y = partial[2 * i + 1];
+        });
+        transform = fitTransform();
+        settling = true;
+        if (!canvas.dataset.frame) canvas.dataset.frame = '1';
+      }
       redraw();
     }
   );
@@ -637,6 +652,7 @@ export function drawGraph(
       n.room = Number.isFinite(best) ? Math.sqrt(best) : 20;
     }
     laidOut = true;
+    settling = false;
     canvas.dataset.ready = '1';
     fitToView();
     return new Promise((resolve) => requestAnimationFrame(() => resolve()));
@@ -677,6 +693,11 @@ export function drawGraph(
     setPhotos: (next) => {
       photos = next;
       images.clear();
+      redraw();
+    },
+    // real names that arrived after the graph was drawn
+    setNames: (next) => {
+      names = next;
       redraw();
     },
     setTheme: (next) => {
@@ -737,6 +758,7 @@ export function drawGraph(
       canvas.removeEventListener('click', onClick);
       window.removeEventListener('resize', resize);
       delete canvas.dataset.ready;
+      delete canvas.dataset.frame;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     },

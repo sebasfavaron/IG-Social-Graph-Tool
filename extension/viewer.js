@@ -5,7 +5,7 @@ import { pruneLoneNodes } from './lib/prune.js';
 import { friendGroups } from './lib/groups.js';
 import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
 import { downloadShare, photosFromThumbs, unpackShare, unseal } from './lib/vault.js';
-import { loadGraph, loadPeople, saveGraph } from './lib/store.js';
+import { loadGraph, loadPeople, loadPhotos, saveGraph } from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { lang, setLang, t, translateStatic } from './lib/i18n.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
@@ -55,6 +55,7 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
       ? new Map(owners.map((o) => [o, ownGraph(graph, o)])) // a merged graph from an old link
       : new Map(username && !example ? [[username, graph]] : []);
   storedOwners = new Set(stored);
+  peopleLoad++; // names and photos still coming for the previous graph stop landing
   const total = graph.nodes.length;
   const pruned = pruneLoneNodes(graph);
   $('empty').hidden = pruned.nodes.length > 0;
@@ -786,8 +787,8 @@ document.addEventListener('keydown', (e) => {
 $('example').onclick = () => show(EXAMPLE_GRAPH);
 
 // ---- shared storage (store.js): a crawl per owner, people once ----------------------
-// -> { graph, crawls } for #o=owner (and m=partners: every crawl, merged); names and
-// photos come along into profiles/photos.
+// -> { graph, crawls } for #o=owner (and m=partners: every crawl, merged). Names and
+// photos come after, with fillPeople, so the graph is drawn without waiting for them.
 async function openStored(owner, partners = []) {
   const owners = [owner, ...partners];
   const crawls = await Promise.all(
@@ -798,8 +799,52 @@ async function openStored(owner, partners = []) {
     })
   );
   const graph = partners.length ? mergeGraphs(...crawls) : crawls[0];
-  const people = await loadPeople(graph.nodes.map((n) => n.id));
-  return { graph, crawls, ...people };
+  return { graph, crawls };
+}
+
+// Names, then photos, from the shared storage for the people of the graph just shown that
+// have none yet; each lands on screen as it arrives. Photos are ~98% of the bytes (12 MB
+// for three combined graphs), so they come last, most connected people first. Call right
+// after show(): another show() stops what is still coming.
+let peopleLoad = 0;
+async function fillPeople(graph) {
+  const run = peopleLoad;
+  const current = () => run === peopleLoad;
+  const degree = new Map(graph.nodes.map((n) => [n.id, 0]));
+  for (const l of graph.links) {
+    degree.set(l.source, (degree.get(l.source) || 0) + 1);
+    degree.set(l.target, (degree.get(l.target) || 0) + 1);
+  }
+  const ids = [...degree.keys()].sort((a, b) => degree.get(b) - degree.get(a));
+  try {
+    const missing = ids.filter((id) => !profiles[id]);
+    if (missing.length) {
+      const people = await loadPeople(missing, { withPhotos: false });
+      if (!current()) return;
+      profiles = { ...people.profiles, ...profiles };
+      graphControl?.setNames(new Map(Object.entries(profiles).flatMap(([id, p]) => (p?.name ? [[id, p.name]] : []))));
+      updatePanel();
+      const selected = graphControl?.selected();
+      if (selected) paintWho(selected);
+      if (document.activeElement === search && search.value) search.oninput();
+    }
+    photos = new Map(photos); // never add to the crawl's own map
+    const mine = photos;
+    await loadPhotos(
+      ids.filter((id) => !photos.has(id)),
+      {
+        onBatch: (batch) => {
+          if (!current() || photos !== mine) return;
+          for (const [u, url] of batch) photos.set(u, url);
+          graphControl?.setPhotos(photos);
+          const selected = graphControl?.selected();
+          if (selected && batch.has(selected)) paintWho(selected);
+        },
+      }
+    );
+  } catch (err) {
+    console.warn('names or photos did not load', err); // the graph works without them
+  }
 }
 
 // Links from before the shared storage: names and photos, encrypted (vault.js). Opening
@@ -861,12 +906,9 @@ $('combine-form').onsubmit = async (e) => {
       state.o = owners[0];
     }
     if (state.o) {
-      const opened = await openStored(state.o);
-      friend = opened.graph;
+      // their names and photos come after the graph is drawn (fillPeople); ours win
+      friend = (await openStored(state.o)).graph;
       friendStored = true;
-      // ours win where both have someone
-      profiles = { ...opened.profiles, ...profiles };
-      photos = new Map([...opened.photos, ...photos]);
     } else {
       friend = await decodeGraph(state.g);
     }
@@ -876,7 +918,9 @@ $('combine-form').onsubmit = async (e) => {
     const stored = [...storedOwners].filter((o) => parts.has(o));
     if (friendStored) stored.push(friend.username);
     dialog.close();
-    await show(merged, { crawls, stored });
+    const showing = show(merged, { crawls, stored });
+    if (friendStored) fillPeople(merged);
+    await showing;
     syncUrl();
   } catch (err) {
     fail(t('couldNotCombine', err.message));
@@ -916,9 +960,11 @@ async function openShareHash() {
       if (!sameOnScreen) {
         $('counts').textContent = t('opening');
         const opened = await openStored(state.o, state.m);
-        profiles = opened.profiles;
-        photos = opened.photos;
-        await show(opened.graph, { crawls: opened.crawls, stored: opened.crawls.map((c) => c.username) });
+        profiles = {};
+        photos = new Map();
+        const showing = show(opened.graph, { crawls: opened.crawls, stored: opened.crawls.map((c) => c.username) });
+        fillPeople(opened.graph);
+        await showing;
       }
     } else if (state.g && (state.g !== encoded || isStored())) {
       profiles = ownProfiles;

@@ -7,6 +7,7 @@
 //
 // Classic script (no import/export) for the worker's importScripts; tests load it too.
 // forceLayout(n, links: Int32Array [s0, t0, ...], onProgress?) -> { x, y } Float64Arrays
+// onProgress(0..1, x, y) every 30 steps, with the positions so far (live arrays: copy them)
 self.forceLayout = function forceLayout(n, links, onProgress) {
   const LINK_STRENGTH = 0.1;
   const CHARGE = -100;
@@ -284,7 +285,7 @@ self.forceLayout = function forceLayout(n, links, onProgress) {
       x[i] -= sx;
       y[i] -= sy;
     }
-    if (onProgress && step % 30 === 0) onProgress(step / STEPS);
+    if (onProgress && step % 30 === 0) onProgress(step / STEPS, x, y);
   }
   return { x, y };
 };

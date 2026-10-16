@@ -76,6 +76,7 @@ The site is the extension's viewer, published from `extension/` by [`.github/wor
 - After editing, hit the reload icon on the extension's card in `chrome://extensions`. Chrome keeps the old background worker running until then, while the popup is read fresh each time.
 - The share storage is the Neon project linked in `neon.ts` (`neon login`, then `neon env pull` writes the owner's connection strings to `.env.local`, which git ignores). To set it up again: `psql "$DATABASE_URL_UNPOOLED" -v client_password=… -f db/shares.sql`, then `psql "$DATABASE_URL_UNPOOLED" -f db/graphs.sql`, then put that password in `SHARES_DB` in `store.js`.
 - A preview of the viewer that is hidden (a background tab) never finishes opening a link: the view is restored after the first animation frame, which hidden pages do not run.
+- **Loading order of a shared graph:** the graphs first (~35 KB for three people), drawn while the layout settles; then names (~70 KB); then photos, which are ~98% of the bytes (12.5 MB for three people), most connected people first, 100 per request and 6 requests at a time. All photo requests at once share the bandwidth and on a slow connection all land at the very end, which is why they are capped.
 - `npm test` (Node 22) runs the crawler against a fake Instagram, plus the share-link format, friend groups and layout.
 - Endpoints used (web app id `936619743392459`): `/api/v1/friendships/{pk}/followers/` and `/api/v1/friendships/{pk}/mutual_followers/`, paginated with `max_id` / `next_max_id`.
 

@@ -45,6 +45,7 @@ function writeCache(key, positions) {
 }
 
 // ids: string[]; linkIndexes: Int32Array [s0, t0, ...]; returns { positions, cached, cancel }
+// onProgress(0..1, partial positions) while the worker runs
 export function computeLayout(ids, linkIndexes, onProgress) {
   const key = graphKey(ids, linkIndexes);
   const cached = readCache(key, ids.length);
@@ -53,7 +54,7 @@ export function computeLayout(ids, linkIndexes, onProgress) {
   const worker = new Worker(new URL('./layoutWorker.js', import.meta.url));
   const positions = new Promise((resolve, reject) => {
     worker.onmessage = ({ data }) => {
-      if (data.progress !== undefined) return onProgress?.(data.progress);
+      if (data.progress !== undefined) return onProgress?.(data.progress, data.partial);
       worker.terminate();
       writeCache(key, data.positions);
       resolve(data.positions);

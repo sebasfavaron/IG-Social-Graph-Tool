@@ -10,6 +10,10 @@ const SHARES_HOST = 'ep-empty-sun-b68xcfin-pooler.c-2.sa-east-1.aws.neon.tech';
 const SHARES_DB = `postgresql://share_client:a6ecb5e19602ba40f6e83f7696a701f80f5de12015404400@${SHARES_HOST}/neondb?sslmode=require`;
 const PEOPLE_BATCH_BYTES = 1.5 * 1024 * 1024; // per save_people call, under its 4 MB cap
 const PEOPLE_READ_BATCH = 300; // usernames per get_people call
+// Photos are ~98% of the bytes (~6 KB each as base64): smaller batches, a few at a time, so
+// on a slow connection they land one batch after another instead of all at the very end.
+const PHOTO_READ_BATCH = 100;
+const PHOTO_READS_AT_ONCE = 6;
 
 export async function sharesQuery(query, params, fetchImpl = fetch) {
   const res = await fetchImpl(`https://${SHARES_HOST}/sql`, {
@@ -126,4 +130,24 @@ export async function loadPeople(ids, { fetchImpl = fetch, withPhotos = true } =
     if (photo && type) photos.set(username, `data:${type};base64,${photo}`);
   }
   return { profiles, photos };
+}
+
+// Photos only, for ids in the order given (most wanted first). onBatch(Map user -> data URL)
+// once per batch as it lands. -> every photo found, once all are in.
+export async function loadPhotos(ids, { onBatch, fetchImpl = fetch } = {}) {
+  const all = [...ids];
+  const photos = new Map();
+  let next = 0;
+  const worker = async () => {
+    while (next < all.length) {
+      const names = all.slice(next, (next += PHOTO_READ_BATCH));
+      const rows = await sharesQuery('select username, photo, photo_type from get_people($1)', [names], fetchImpl);
+      const batch = new Map();
+      for (const [username, photo, type] of rows) if (photo && type) batch.set(username, `data:${type};base64,${photo}`);
+      for (const [u, url] of batch) photos.set(u, url);
+      if (batch.size) onBatch?.(batch);
+    }
+  };
+  await Promise.all(Array.from({ length: PHOTO_READS_AT_ONCE }, worker));
+  return photos;
 }
