@@ -912,8 +912,14 @@ function openPicker() {
   $('picker-filter').value = '';
   chosen = [...parts.keys()];
   renderPicker();
-  if (document.body.classList.contains('home')) dialog.show();
-  else dialog.showModal();
+  if (document.body.classList.contains('home')) {
+    dialog.show();
+    // a dialog focuses its first control on opening, here the folded "got a link?" line,
+    // which drew a focus ring on a page nobody had touched yet
+    if (dialog.contains(document.activeElement)) document.activeElement.blur();
+  } else {
+    dialog.showModal();
+  }
   if (!shared) {
     $('picker-status').textContent = t('pickerLoading');
     listGraphs()
