@@ -182,8 +182,22 @@ function syncUrl() {
   if (inExtension || (!encoded && !isStored())) return;
   clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {
-    history.replaceState(null, '', location.pathname + location.search + currentHash(encoded));
+    const hash = currentHash(encoded);
+    // Another graph on screen (combined, back to one person, someone else's link) is a new
+    // history entry, so Back returns to the previous graph; zoom, selection and names only
+    // rewrite the current one. Replacing every time left Back on whatever link was opened
+    // before this page.
+    const before = graphOf(parseHash(location.hash));
+    const url = location.pathname + location.search + hash;
+    if (before && before !== graphOf(parseHash(hash))) history.pushState(null, '', url);
+    else history.replaceState(null, '', url);
   }, 250);
+}
+// which graph a link shows, regardless of how it is being looked at
+function graphOf(state) {
+  if (!state) return null;
+  if (state.o) return `o:${[state.o, ...state.m].join(',')}`;
+  return state.s ? `s:${state.s}` : `g:${state.g}`;
 }
 function onViewChange(byUser) {
   if (byUser) viewTouched = true;
@@ -938,7 +952,18 @@ async function openShareHash() {
   syncUrl(); // the layout can outlast the address's first rewrite, which had no view yet
   return true;
 }
-window.addEventListener('hashchange', openShareHash); // someone pasted or edited a link
+// Someone pasted or edited a link (hashchange), or went Back/Forward between graphs this
+// page put in the history (popstate; pushState entries do not always fire hashchange).
+// Both can fire for one step, so a step is handled once.
+let navigating = false;
+function onNavigate() {
+  if (navigating) return;
+  navigating = true;
+  setTimeout(() => (navigating = false));
+  openShareHash();
+}
+window.addEventListener('hashchange', onNavigate);
+window.addEventListener('popstate', onNavigate);
 
 // Share: each crawl on screen goes to the shared storage with its people's names and
 // photos (store.js), and the link carries only the owners' usernames, plus how it is
