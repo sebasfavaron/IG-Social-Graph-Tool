@@ -6,7 +6,9 @@ Draws who-follows-whom among the people who follow you on Instagram, as an inter
 
 ### Map your own followers (Chrome extension)
 
-1. Clone this repo, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the [`extension/`](./extension) folder.
+Not technical? [**The install page**](https://sebasfavaron.github.io/IG-Social-Graph-Tool/install.html) walks through it with a download button, and after installing, a welcome tab checks the icon is pinned and you're logged in, then starts. Shared graphs link there.
+
+1. Download [`ig-social-graph.zip`](https://sebasfavaron.github.io/IG-Social-Graph-Tool/ig-social-graph.zip) (or clone this repo), open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the unzipped folder (or [`extension/`](./extension)). Keep the folder: Chrome runs the extension from it, and does not update it on its own.
 2. Log in to [instagram.com](https://www.instagram.com) in that browser.
 3. Click the extension icon → **Start**. It lists your followers, then asks Instagram, for each of them, which accounts you follow also follow them.
 4. Leave it running. The popup shows progress and the time left, measured from the pace so far (Instagram's pauses included); the icon badge shows the percentage. You can close the popup, pause and resume, or restart the browser: progress is saved.
@@ -88,11 +90,14 @@ The site is the extension's viewer, published from `extension/` by [`.github/wor
 | `extension/lib/groupNames.js` | keeps each friend-group name on its group across crawls |
 | `extension/lib/merge.js` | combines two graphs and tells whose circle each person is in |
 | `extension/explore.html`, `explore.js` | SQL over shared graphs (sql.js), site only |
+| `extension/lib/i18n.js` | the viewer's words in Spanish (default) and English; static text in viewer.html carries `data-i18n` keys |
 | `extension/lib/store.js` | shared database: saves and reads graphs by owner and people by username through Neon's HTTP SQL endpoint |
 | `extension/lib/vault.js` | older encrypted shares: reads them so the viewer can copy them over |
 | `db/shares.sql` | the share storage: table, the two functions, the public role allowed to call only those |
 | `extension/lib/share.js` | packs the graph and view state into the link: `#g=…&p=…&c=…&v=…&n=…&m=…` |
 | `extension/viewer.html`, `viewer.js` | the page: panel, search, groups key, themes, link state |
+| `extension/install.html` | site only: step-by-step install for non-technical people; phones and non-Chromium browsers get told to switch |
+| `extension/welcome.html`, `welcome.js` | opens on first install: pin the icon, log in, Start, progress |
 
 ### Credits
 

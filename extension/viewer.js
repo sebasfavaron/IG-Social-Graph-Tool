@@ -7,6 +7,7 @@ import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, pa
 import { downloadShare, photosFromThumbs, unpackShare, unseal } from './lib/vault.js';
 import { loadGraph, loadPeople, saveGraph } from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
+import { lang, setLang, t, translateStatic } from './lib/i18n.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
 
 const INSTALL_URL = 'https://sebasfavaron.github.io/IG-Social-Graph-Tool/install.html';
@@ -56,18 +57,6 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   storedOwners = new Set(stored);
   const total = graph.nodes.length;
   const pruned = pruneLoneNodes(graph);
-  const names = owners.map((o) => `@${o}`).join(' + ');
-  document.title = combined ? names : username ? `@${username}'s circle` : 'IG Social Graph';
-  $('title').textContent = combined ? names : username ? `@${username}` : 'IG Social Graph';
-  const loners = total - pruned.nodes.length;
-  const extra = document.createElement('span');
-  extra.className = 'wide-only';
-  extra.textContent = loners ? ` · ${loners} ${loners === 1 ? 'loner' : 'loners'} hidden until selected` : '';
-  $('counts').replaceChildren(
-    `${pruned.nodes.length} people · ${pruned.links.length} connections`,
-    extra,
-    graph.metadata?.complete === false ? ' · partial' : ''
-  );
   $('empty').hidden = pruned.nodes.length > 0;
   // Same order whatever the source (crawl, link, example), so the layout comes out the same
   // and a view saved in a link lands on the same people.
@@ -79,7 +68,16 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   const kept = new Set(pruned.nodes.map((n) => n.id));
   const hidden = new Set(full.nodes.map((n) => n.id).filter((id) => !kept.has(id)));
   groups = combined ? circleKey(full, owners, hidden) : friendGroups(full, { exclude: username, hidden });
-  if (combined) extra.after(` · ${groups.sizes[0]} ${owners.length === 2 ? 'in both circles' : 'in more than one circle'}`);
+  heading = {
+    owners,
+    combined,
+    people: pruned.nodes.length,
+    links: pruned.links.length,
+    loners: total - pruned.nodes.length,
+    partial: graph.metadata?.complete === false,
+    shared: combined ? groups.sizes[0] : 0,
+  };
+  renderHeading();
   graphControl?.destroy();
   graphControl = pruned.nodes.length
     ? drawGraph($('graph'), full, {
@@ -98,19 +96,12 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   groupNames = combined ? [] : loadGroupNames();
   heldGroup = null;
   renderGroups();
-  $('graph').setAttribute(
-    'aria-label',
-    `Follower graph of ${pruned.nodes.length} people` +
-      (groups.sizes.length > 1 ? ` in ${groups.sizes.length} friend groups` : '') +
-      '. Use search to pick someone; their connections are listed in a panel.'
-  );
   $('share').hidden = !shown;
   updateExplore();
   // someone looking at a shared graph: how to make their own (the extension has it already)
   $('invite').hidden = inExtension || !shown;
   $('combine').hidden = !shown || !username || owners.length >= MAX_OWNERS;
   $('uncombine').hidden = !shown || !combined;
-  $('uncombine').querySelector('.label').textContent = `@${username} only`;
   pinned = null;
   viewTouched = false;
   encoded = encodedGraph;
@@ -131,6 +122,28 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
   updatePanel();
   closeSearch();
   await graphControl?.ready;
+}
+
+// The title, counts and labels that describe the graph on screen, in the current language.
+let heading = null;
+function renderHeading() {
+  if (!heading) return;
+  const { owners, combined, people, links, loners, partial, shared } = heading;
+  const [username] = owners;
+  const names = owners.map((o) => `@${o}`).join(' + ');
+  document.title = combined ? names : username ? t('circleOf', username) : 'IG Social Graph';
+  $('title').textContent = combined ? names : username ? `@${username}` : 'IG Social Graph';
+  const extra = document.createElement('span');
+  extra.className = 'wide-only';
+  extra.textContent = loners ? t('loners', loners) : '';
+  $('counts').replaceChildren(
+    t('counts', people, links),
+    extra,
+    combined ? t(owners.length === 2 ? 'inBoth' : 'inMoreThanOne', shared) : '',
+    partial ? t('partial') : ''
+  );
+  $('graph').setAttribute('aria-label', t('graphLabel', people, combined ? 0 : groups.sizes.length));
+  $('uncombine').querySelector('.label').textContent = t('onlyOwner', username);
 }
 
 // a click on the graph selected or cleared someone
@@ -187,9 +200,9 @@ const FILTER_FROM = 15; // people in the panel before it offers a filter box
 // Headings name the selected person and put the count where a sentence would, so the
 // direction of each group reads naturally: "9 follow @x", "@x follows 5".
 const LABELS = {
-  follower: (name, n) => `${n} ${n === 1 ? 'follows' : 'follow'} @${name}`,
-  following: (name, n) => `@${name} follows ${n}`,
-  mutual: (name, n) => (n ? `@${name} and ${n} follow each other` : 'no mutual follows'),
+  follower: (name, n) => t('follower', name, n),
+  following: (name, n) => t('following', name, n),
+  mutual: (name, n) => t('mutual', name, n),
 };
 const shorten = (name, max = 22) => (name.length > max ? `${name.slice(0, max - 1)}…` : name);
 let lastSelected = null;
@@ -197,9 +210,9 @@ const narrow = matchMedia('(max-width: 700px)');
 // phones show one group at a time, as tabs; picking a tab also shows only its lines
 let sheetTab = null;
 const TAB_LABELS = {
-  mutual: (name, n) => `Each other · ${n}`,
-  follower: (name, n) => `Follow them · ${n}`,
-  following: (name, n) => `They follow · ${n}`,
+  mutual: (name, n) => t('tabMutual', n),
+  follower: (name, n) => t('tabFollower', n),
+  following: (name, n) => t('tabFollowing', n),
 };
 
 function personButton(id) {
@@ -216,7 +229,7 @@ function personButton(id) {
 function paintWho(selected) {
   $('panel-name').textContent = `@${selected}`;
   const profile = profiles[selected];
-  $('panel-meta').textContent = [profile?.name, profile?.private && 'private', profile?.verified && 'verified']
+  $('panel-meta').textContent = [profile?.name, profile?.private && t('private'), profile?.verified && t('verified')]
     .filter(Boolean)
     .join(' · ');
   $('panel-meta').hidden = !$('panel-meta').textContent;
@@ -230,9 +243,9 @@ function paintWho(selected) {
     $('avatar').textContent = (selected.match(/[a-z0-9]/i)?.[0] || '@').toUpperCase();
   }
   $('avatar').disabled = !hasPhoto;
-  if (hasPhoto) $('avatar').setAttribute('aria-label', `Show @${selected}'s photo larger`);
+  if (hasPhoto) $('avatar').setAttribute('aria-label', t('showPhotoOf', selected));
   else $('avatar').removeAttribute('aria-label');
-  $('avatar').title = hasPhoto ? 'Show larger' : '';
+  $('avatar').title = hasPhoto ? t('showLarger') : '';
 }
 
 // ---- enlarged photo ------------------------------------------------------------------
@@ -362,13 +375,13 @@ function updatePanel() {
     const everyone = people.follower.length + people.following.length + people.mutual.length;
     $('panel-filter').hidden = everyone < FILTER_FROM;
     $('profile').href = `https://www.instagram.com/${encodeURIComponent(selected)}/`;
-    $('profile').setAttribute('aria-label', `Open @${selected} on Instagram (new tab)`);
+    $('profile').setAttribute('aria-label', t('openOnInstagramOf', selected));
     for (const section of sections) {
       const cat = section.dataset.cat;
       const ids = [...people[cat]].sort((a, b) => a.localeCompare(b));
       const toggle = section.querySelector('.group-toggle');
       toggle.querySelector('.label').textContent = LABELS[cat](shorten(selected), ids.length);
-      toggle.title = pinned === cat ? 'Show all groups again' : 'Show only this group (hover to preview)';
+      toggle.title = pinned === cat ? t('showAllGroups') : t('showOnlyGroup');
       toggle.setAttribute('aria-pressed', String(pinned === cat));
       toggle.disabled = ids.length === 0;
       const renderKey = `${expanded.has(cat)}|${query}`;
@@ -381,14 +394,14 @@ function updatePanel() {
         if (query && ids.length && !found.length) {
           const li = document.createElement('li');
           li.className = 'none';
-          li.textContent = 'No match';
+          li.textContent = t('noMatch');
           list.append(li);
         }
         if (!query && ids.length > shownIds.length) {
           const li = document.createElement('li');
           const more = document.createElement('button');
           more.className = 'more';
-          more.textContent = `Show all ${ids.length}`;
+          more.textContent = t('showAll', ids.length);
           more.onclick = () => {
             expanded.add(cat);
             updatePanel();
@@ -419,7 +432,7 @@ function updatePanel() {
         `${LABELS.following(selected, c.following)}. ${LABELS.mutual(selected, c.mutual)}.`;
     }
   } else if (lastSelected) {
-    $('announce').textContent = 'Selection cleared.';
+    $('announce').textContent = t('selectionCleared');
   }
   lastSelected = selected;
   syncUrl();
@@ -460,7 +473,7 @@ $('panel-filter').onkeydown = (e) => {
 $('sheet-handle').onclick = () => {
   const folded = document.body.classList.toggle('sheet-folded');
   $('sheet-handle').setAttribute('aria-expanded', String(!folded));
-  $('sheet-handle').setAttribute('aria-label', folded ? 'Unfold panel' : 'Fold panel');
+  $('sheet-handle').setAttribute('aria-label', folded ? t('unfoldPanel') : t('foldPanel'));
 };
 
 // Select someone and pan to them. The panel is filled first, so the pan centres the
@@ -548,8 +561,9 @@ function circleKey(graph, owners, hidden) {
     groupOf.set(id, colourOf(c));
     if (!hidden.has(id)) sizes[order.indexOf(c)]++;
   }
-  const labels = order.map((c) =>
-    c === shared ? (owners.length === 2 ? 'In both circles' : 'In more than one') : `Only @${owners[c]}'s`
+  // functions, so the key follows a language change
+  const labels = order.map((c) => () =>
+    c === shared ? t(owners.length === 2 ? 'circleBoth' : 'circleMany') : t('circleOnly', owners[c])
   );
   return { groupOf, sizes, labels, colours: order.map(colourOf) };
 }
@@ -583,7 +597,7 @@ function groupRow(i, n, colour, text) {
   // a button, so holding is reachable from the keyboard too
   const pick = document.createElement('button');
   pick.className = 'pick';
-  pick.title = 'Click to keep this group highlighted';
+  pick.title = t('holdGroup');
   const label = document.createElement('span');
   label.className = 'label';
   label.textContent = text;
@@ -603,7 +617,7 @@ function groupRow(i, n, colour, text) {
 function renderGroups() {
   $('groups').hidden = groups.sizes.length < 2;
   $('groups-count').textContent = groups.labels ? '' : `(${groups.sizes.length})`;
-  $('groups-title').firstChild.textContent = groups.labels ? 'Circles ' : 'Friend groups ';
+  $('groups-title').firstChild.textContent = groups.labels ? t('circles') : t('friendGroups');
   // open on desktop, folded on phones the first time; after that it stays as the user left it
   if (!groupsKeyShown && !$('groups').hidden) {
     $('groups').open = !narrow.matches;
@@ -611,26 +625,26 @@ function renderGroups() {
   }
   if (groups.labels) {
     $('groups-list').replaceChildren(
-      ...groups.sizes.map((n, i) => groupRow(i, n, groups.colours[i], shorten(groups.labels[i], 26)).li)
+      ...groups.sizes.map((n, i) => groupRow(i, n, groups.colours[i], shorten(groups.labels[i](), 26)).li)
     );
     showHeld();
     return;
   }
   $('groups-list').replaceChildren(
     ...groups.sizes.map((n, i) => {
-      const { li, pick, label } = groupRow(i, n, i, groupNames[i] || `Group ${i + 1}`);
-      pick.setAttribute('aria-label', `${label.textContent} (${n} people)`);
+      const { li, pick, label } = groupRow(i, n, i, groupNames[i] || t('groupN', i + 1));
+      pick.setAttribute('aria-label', t('groupPeople', label.textContent, n));
       // renaming swaps the row's text for a box, only from the pencil
       const input = document.createElement('input');
       input.hidden = true;
-      input.placeholder = `Group ${i + 1}`;
+      input.placeholder = t('groupN', i + 1);
       input.maxLength = MAX_GROUP_NAME;
-      input.setAttribute('aria-label', `Name for group ${i + 1} (${n} people)`);
+      input.setAttribute('aria-label', t('groupNameLabel', i + 1, n));
       input.oninput = () => saveGroupName(i, input.value.trim());
       let before = '';
       const finish = () => {
-        label.textContent = groupNames[i] || `Group ${i + 1}`;
-        pick.setAttribute('aria-label', `${label.textContent} (${n} people)`);
+        label.textContent = groupNames[i] || t('groupN', i + 1);
+        pick.setAttribute('aria-label', t('groupPeople', label.textContent, n));
         li.classList.remove('editing');
         input.hidden = true;
         pick.hidden = false;
@@ -651,8 +665,8 @@ function renderGroups() {
       const rename = document.createElement('button');
       rename.className = 'rename';
       rename.innerHTML = PEN_ICON;
-      rename.setAttribute('aria-label', `Rename group ${i + 1}`);
-      rename.title = 'Rename this group (saved in the share link)';
+      rename.setAttribute('aria-label', t('renameGroup', i + 1));
+      rename.title = t('renameTitle');
       rename.onclick = () => {
         before = groupNames[i] || '';
         input.value = before;
@@ -695,7 +709,7 @@ function themeFromCss() {
 function updateThemeButton() {
   const dark = isDark();
   $('theme').textContent = dark ? '☀' : '☾';
-  $('theme').setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+  $('theme').setAttribute('aria-label', dark ? t('toLight') : t('toDark'));
 }
 $('theme').onclick = () => {
   const next = isDark() ? 'light' : 'dark';
@@ -711,6 +725,41 @@ darkQuery.addEventListener('change', () => {
   graphControl?.setTheme(themeFromCss());
 });
 updateThemeButton();
+
+// ---- language: Spanish by default, English from the toggle next to the theme one ----
+function updateLangButton() {
+  $('lang').textContent = t('langButton');
+  $('lang').setAttribute('aria-label', t('langLabel'));
+  $('lang').title = t('langLabel');
+}
+// the empty screen: run a crawl (extension), or get a link from someone who did (site)
+function renderEmptyText() {
+  if (inExtension) return void ($('empty-text').textContent = t('emptyExtension'));
+  const link = Object.assign(document.createElement('a'), {
+    href: INSTALL_URL,
+    target: '_blank',
+    rel: 'noopener',
+    textContent: t('emptySiteLink'),
+  });
+  $('empty-text').replaceChildren(t('emptySiteBefore'), link, t('emptySiteAfter'));
+}
+function applyLanguage() {
+  document.documentElement.lang = lang;
+  translateStatic();
+  renderEmptyText();
+  updateLangButton();
+  updateThemeButton();
+  renderHeading();
+  renderGroups();
+  lastSelected = null; // repaint the person at the top of the panel too
+  updatePanel();
+}
+$('lang').onclick = () => {
+  setLang(lang === 'es' ? 'en' : 'es');
+  applyLanguage();
+};
+if (lang !== 'es') applyLanguage();
+else updateLangButton();
 
 // Esc clears the selection (search handles its own Esc)
 document.addEventListener('keydown', (e) => {
@@ -730,7 +779,7 @@ async function openStored(owner, partners = []) {
   const crawls = await Promise.all(
     owners.map(async (o) => {
       const g = await loadGraph(o);
-      if (!g) throw new Error(`@${o} has not shared a graph yet`);
+      if (!g) throw new Error(t('notShared', o));
       return decodeGraph(g);
     })
   );
@@ -784,8 +833,8 @@ $('combine-form').onsubmit = async (e) => {
   const text = $('combine-link').value.trim();
   const at = text.search(/#[gso]=/);
   const state = at >= 0 ? parseHash(text.slice(at)) : null;
-  if (!state?.g && !state?.s && !state?.o) return fail('That is not a share link: they contain "#o=" after the address.');
-  if (state.m.length) return fail('That link already combines people. Ask for one with only theirs.');
+  if (!state?.g && !state?.s && !state?.o) return fail(t('notALink'));
+  if (state.m.length) return fail(t('alreadyCombined'));
   if (!shown) return;
   $('combine-go').disabled = true;
   try {
@@ -794,7 +843,7 @@ $('combine-form').onsubmit = async (e) => {
     if (state.s) {
       // an old link: copied over first, then read like any stored one
       const owners = await copyOver(await openFullShare(state.s, state.k), [], state.s);
-      if (!owners) throw new Error('that link does not say whose graph it is');
+      if (!owners) throw new Error(t('noOwner'));
       state.o = owners[0];
     }
     if (state.o) {
@@ -816,7 +865,7 @@ $('combine-form').onsubmit = async (e) => {
     await show(merged, { crawls, stored });
     syncUrl();
   } catch (err) {
-    fail(`Could not combine: ${err.message}.`);
+    fail(t('couldNotCombine', err.message));
   } finally {
     $('combine-go').disabled = false;
   }
@@ -834,7 +883,7 @@ async function openShareHash() {
   if (!state?.g && !state?.s && !state?.o) return false;
   try {
     if (state.s) {
-      $('counts').textContent = 'Opening the shared graph…';
+      $('counts').textContent = t('opening');
       const full = await openFullShare(state.s, state.k);
       const owners = await copyOver(full, state.m, state.s).catch(() => null);
       if (owners) {
@@ -851,7 +900,7 @@ async function openShareHash() {
     } else if (state.o) {
       const sameOnScreen = isStored() && shown?.username === state.o && shown.partners.join() === state.m.join();
       if (!sameOnScreen) {
-        $('counts').textContent = 'Opening the shared graph…';
+        $('counts').textContent = t('opening');
         const opened = await openStored(state.o, state.m);
         profiles = opened.profiles;
         photos = opened.photos;
@@ -865,7 +914,7 @@ async function openShareHash() {
       await show(graph, { encodedGraph: state.g });
     }
   } catch (err) {
-    alert(`This share link did not open: ${err.message}. Ask for it again.`);
+    alert(t('didNotOpen', err.message));
     if (state.s || state.o) $('counts').textContent = '';
     return false;
   }
@@ -895,21 +944,25 @@ window.addEventListener('hashchange', openShareHash); // someone pasted or edite
 // photos (store.js), and the link carries only the owners' usernames, plus how it is
 // being looked at. A crawl already stored as shown is not sent again.
 const shareLabel = $('share').innerHTML; // read once: a click mid-"Link copied" would keep that
+// back to the button's own words, in the current language
+function restoreShare() {
+  $('share').innerHTML = shareLabel;
+  translateStatic($('share'));
+}
 let shareFlash = null;
 $('share').onclick = async () => {
   if (!shown) return;
   const button = $('share');
-  const label = shareLabel;
   clearTimeout(shareFlash);
   const flash = (text) => {
     button.textContent = text;
-    shareFlash = setTimeout(() => (button.innerHTML = label), 2500);
+    shareFlash = setTimeout(restoreShare, 2500);
   };
   try {
     const missing = [...parts].filter(([o]) => !storedOwners.has(o));
     if (missing.length) {
       button.disabled = true;
-      button.textContent = 'Uploading…';
+      button.textContent = t('uploading');
       for (const [owner, crawl] of missing) {
         await saveGraph({
           owner,
@@ -924,8 +977,8 @@ $('share').onclick = async () => {
     }
     if (!isStored() && !encoded) encoded = await encodeGraph(shown);
   } catch (err) {
-    button.innerHTML = label;
-    alert(`Could not share: ${err.message}.`);
+    restoreShare();
+    alert(t('couldNotShare', err.message));
     return;
   } finally {
     button.disabled = false;
@@ -933,11 +986,11 @@ $('share').onclick = async () => {
   const url = SHARE_BASE_URL + currentHash(encoded);
   try {
     await navigator.clipboard.writeText(url);
-    flash('Link copied');
+    flash(t('linkCopied'));
   } catch (_) {
     // the upload took long enough for the browser to stop treating this as a click
-    button.innerHTML = label;
-    prompt('Copy this link:', url);
+    restoreShare();
+    prompt(t('copyThisLink'), url);
   }
 };
 
@@ -1060,19 +1113,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 $('invite').href = INSTALL_URL;
-if (!inExtension) {
-  const link = Object.assign(document.createElement('a'), {
-    href: INSTALL_URL,
-    target: '_blank',
-    rel: 'noopener',
-    textContent: 'IG Social Graph extension',
-  });
-  $('empty-text').replaceChildren(
-    'Open a share link from the ',
-    link,
-    ' to see a graph here.'
-  );
-}
+renderEmptyText();
 if (inExtension) {
   const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
   profiles = ownProfiles = crawl?.profiles || {};

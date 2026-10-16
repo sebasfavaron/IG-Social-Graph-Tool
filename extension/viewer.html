@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -10,6 +10,7 @@
       try {
         const saved = localStorage.getItem('theme');
         if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+        if (localStorage.getItem('lang') === 'en') document.documentElement.lang = 'en';
       } catch (_) {}
     </script>
     <style>
@@ -763,11 +764,12 @@
     <header class="panel-box">
       <div class="headline"><strong id="title">IG Social Graph</strong> <span id="counts" class="muted"></span></div>
       <div class="search" role="search">
-        <label for="search" class="sr-only">Find a person</label>
+        <label for="search" class="sr-only" data-i18n="findPerson">Buscar a alguien</label>
         <input
           id="search"
           type="search"
-          placeholder="Search  /"
+          placeholder="Buscar  /"
+          data-i18n-placeholder="searchPlaceholder"
           autocomplete="off"
           spellcheck="false"
           role="combobox"
@@ -775,19 +777,20 @@
           aria-expanded="false"
           aria-autocomplete="list"
         />
-        <ul id="results" role="listbox" aria-label="Matching people" hidden></ul>
+        <ul id="results" role="listbox" aria-label="Personas que coinciden" data-i18n-aria-label="matchingPeople" hidden></ul>
       </div>
-      <button id="share" hidden title="Saves the graph with names and photos to the shared storage and copies a short link. Nothing there is private.">
-        <span class="wide-only">Copy share link</span><span class="narrow-only">Share</span>
+      <button id="share" hidden data-i18n-title="shareTitle" title="Guarda el grafo con nombres y fotos en el almacenamiento compartido y copia un link corto. Nada de eso es privado.">
+        <span class="wide-only" data-i18n="shareWide">Copiar link</span><span class="narrow-only" data-i18n="shareNarrow">Compartir</span>
       </button>
-      <button id="combine" hidden title="Paste a friend's share link to see both of your circles in one graph">
-        <span class="wide-only">Combine with a friend…</span><span class="narrow-only">Combine</span>
+      <button id="combine" hidden data-i18n-title="combineTitle" title="Pegá el link de un amigo para ver sus círculos juntos en un grafo">
+        <span class="wide-only" data-i18n="combineWide">Combinar con un amigo…</span><span class="narrow-only" data-i18n="combineNarrow">Combinar</span>
       </button>
-      <button id="uncombine" hidden title="Go back to one person's graph"><span class="label"></span></button>
-      <button id="theme" aria-label="Switch to dark theme" title="Switch theme">☾</button>
+      <button id="uncombine" hidden data-i18n-title="uncombineTitle" title="Volver al grafo de una sola persona"><span class="label"></span></button>
+      <button id="theme" aria-label="Cambiar a tema oscuro" data-i18n-title="switchTheme" title="Cambiar tema">☾</button>
+      <button id="lang" aria-label="Switch to English" title="Switch to English">EN</button>
       <!-- last: it appears once the graph is stored, so nothing else moves -->
-      <a id="explore" hidden target="_blank" rel="noopener" title="Ask these graphs questions in SQL, in a new tab">Explore data</a>
-      <span id="hint" class="muted wide-only">Click someone to see who follows whom · Esc clears</span>
+      <a id="explore" hidden target="_blank" rel="noopener" data-i18n="exploreText" data-i18n-title="exploreTitle" title="Hacerle preguntas a estos grafos en SQL, en una pestaña nueva">Explorar datos</a>
+      <span id="hint" class="muted wide-only" data-i18n="hint">Hacé clic en alguien para ver quién sigue a quién · Esc limpia</span>
     </header>
 
     <aside id="panel" class="panel-box" hidden aria-labelledby="panel-name">
@@ -797,13 +800,13 @@
         <div>
           <h2 id="panel-name"></h2>
           <p id="panel-meta" class="muted" hidden></p>
-          <a id="profile" target="_blank" rel="noopener">Open on Instagram ↗</a>
+          <a id="profile" target="_blank" rel="noopener" data-i18n="openOnInstagram">Abrir en Instagram ↗</a>
         </div>
-        <button id="panel-close" aria-label="Clear selection (Esc)" title="Clear selection (Esc)">×</button>
+        <button id="panel-close" aria-label="Limpiar selección (Esc)" title="Limpiar selección (Esc)" data-i18n-aria-label="clearSelection" data-i18n-title="clearSelection">×</button>
       </div>
-      <label for="panel-filter" class="sr-only">Filter these people</label>
-      <input id="panel-filter" type="search" placeholder="Filter these people" autocomplete="off" spellcheck="false" hidden />
-      <div class="tabs narrow-only" role="tablist" aria-label="Groups">
+      <label for="panel-filter" class="sr-only" data-i18n="filterPeople">Filtrar a estas personas</label>
+      <input id="panel-filter" type="search" placeholder="Filtrar a estas personas" data-i18n-placeholder="filterPeople" autocomplete="off" spellcheck="false" hidden />
+      <div class="tabs narrow-only" role="tablist" aria-label="Grupos" data-i18n-aria-label="groupsTabs">
         <button role="tab" data-tab="mutual" style="--c: var(--mutual)"><span class="swatch"></span><span class="label"></span></button>
         <button role="tab" data-tab="follower" style="--c: var(--follower)"><span class="swatch"></span><span class="label"></span></button>
         <button role="tab" data-tab="following" style="--c: var(--following)"><span class="swatch"></span><span class="label"></span></button>
@@ -823,12 +826,12 @@
     </aside>
 
     <a id="invite" class="panel-box" hidden target="_blank" rel="noopener"
-       title="A free Chrome extension; your followers never leave your browser until you share them">
-      <span class="wide-only">Map your own followers ↗</span><span class="narrow-only">Map yours ↗</span>
+       data-i18n-title="inviteTitle" title="Una extensión gratis de Chrome; tus seguidores no salen de tu navegador hasta que los compartís">
+      <span class="wide-only" data-i18n="inviteWide">Mapeá tus propios seguidores ↗</span><span class="narrow-only" data-i18n="inviteNarrow">Mapeá los tuyos ↗</span>
     </a>
 
     <details id="groups" class="panel-box" hidden>
-      <summary id="groups-title">Friend groups <span id="groups-count" class="muted"></span></summary>
+      <summary id="groups-title">Grupos de amigos <span id="groups-count" class="muted"></span></summary>
       <ol id="groups-list"></ol>
     </details>
 
@@ -839,17 +842,17 @@
 
     <dialog id="combine-dialog" class="panel-box" aria-labelledby="combine-title">
       <form id="combine-form">
-        <h2 id="combine-title">Combine with a friend's graph</h2>
-        <p class="muted">
-          Paste a share link your friend made with this tool. Both circles are drawn together: the people
-          you both know, and the ones only one of you does.
+        <h2 id="combine-title" data-i18n="combineDialogTitle">Combinar con el grafo de un amigo</h2>
+        <p class="muted" data-i18n="combineDialogText">
+          Pegá un link que tu amigo hizo con esta herramienta. Los círculos se dibujan juntos: la gente que
+          conocen los dos, y la que conoce solo uno.
         </p>
-        <label for="combine-link" class="sr-only">Friend's share link</label>
-        <input id="combine-link" type="text" inputmode="url" placeholder="https://…#g=…" autocomplete="off" spellcheck="false" required />
+        <label for="combine-link" class="sr-only" data-i18n="friendLink">Link de tu amigo</label>
+        <input id="combine-link" type="text" inputmode="url" placeholder="https://…#o=…" autocomplete="off" spellcheck="false" required />
         <p id="combine-error" class="error" role="alert" hidden></p>
         <div class="actions">
-          <button type="button" id="combine-cancel">Cancel</button>
-          <button type="submit" id="combine-go" class="primary">Combine</button>
+          <button type="button" id="combine-cancel" data-i18n="cancel">Cancelar</button>
+          <button type="submit" id="combine-go" class="primary" data-i18n="combine">Combinar</button>
         </div>
       </form>
     </dialog>
@@ -858,11 +861,11 @@
 
     <div id="empty" hidden>
       <div>
-        <p id="empty-text">No graph yet. Run a crawl from the extension popup.</p>
-        <button id="example">Try an example</button>
+        <p id="empty-text">Todavía no hay grafo. Corré un crawl desde el popup de la extensión.</p>
+        <button id="example" data-i18n="tryExample">Probar un ejemplo</button>
       </div>
     </div>
-    <canvas id="graph" role="img" aria-label="Follower graph"></canvas>
+    <canvas id="graph" role="img" aria-label="Grafo de seguidores"></canvas>
     <script type="module" src="viewer.js"></script>
   </body>
 </html>

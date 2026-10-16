@@ -101,3 +101,11 @@ test('group names survive iOS escaping the link', async () => {
   assert.equal(iosEscape(hash), hash, 'the link has a character iOS would rewrite');
   assert.deepEqual(parseHash(iosEscape(hash)).n, names);
 });
+
+test('every viewer string exists in Spanish and in English', async () => {
+  const { _strings } = await import('../extension/lib/i18n.js');
+  const es = Object.keys(_strings.es).sort();
+  const en = Object.keys(_strings.en).sort();
+  assert.deepEqual(es.filter((k) => !en.includes(k)), []);
+  assert.deepEqual(en.filter((k) => !es.includes(k)), []);
+});
