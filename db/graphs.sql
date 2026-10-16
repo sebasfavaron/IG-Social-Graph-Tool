@@ -21,6 +21,18 @@ create table if not exists graphs (
 );
 -- how many people the graph holds, for the list of shared graphs (null: shared before it)
 alter table graphs add column if not exists people integer;
+-- sha256 (hex) of the owner key: a random secret the publishing browser keeps (store.js).
+-- Once set, only that key replaces or unpublishes the graph. Null: published before keys,
+-- and the next publish with a key claims it.
+alter table graphs add column if not exists key_hash text;
+-- who is in which graph, so unpublishing can drop the people nobody else's graph has
+create table if not exists graph_people (
+  owner text not null,
+  username text not null,
+  primary key (owner, username)
+);
+create index if not exists graph_people_username on graph_people (username);
+revoke all on table graph_people from public;
 create table if not exists people (
   username text primary key,
   name text,
@@ -38,7 +50,15 @@ language sql stable security definer set search_path = public, pg_temp as $$
     - pg_total_relation_size('shares')
 $$;
 
+create or replace function key_hash(owner_key text) returns text
+language sql immutable as $$
+  select case when owner_key is null or owner_key = '' then null
+              else encode(sha256(convert_to(owner_key, 'UTF8')), 'hex') end
+$$;
+
 -- Saves an owner's graph. Returns whether it was saved.
+-- owner_key: the publishing browser's secret. A graph that has one is replaced only with it
+-- (and an old link copied over never replaces it); one that has none takes this one.
 -- only_if_missing: copying an old link over, which must not replace a newer share. With
 -- from_share (the old link's id in `shares`) it does replace a graph stored before that
 -- share was made, and the graph keeps the share's date, so old links opened in any order
@@ -46,12 +66,15 @@ $$;
 -- is filled.
 drop function if exists save_graph(text, text, boolean);
 drop function if exists save_graph(text, text, boolean, text);
+drop function if exists save_graph(text, text, boolean, text, integer);
 create or replace function save_graph(owner_name text, graph_data text, only_if_missing boolean default false,
-                                      from_share text default null, people_count integer default null)
+                                      from_share text default null, people_count integer default null,
+                                      owner_key text default null)
 returns boolean
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   made timestamptz;
+  stored_hash text := (select g.key_hash from graphs g where g.owner = owner_name);
 begin
   if owner_name !~ '^[A-Za-z0-9._]{1,30}$' then
     raise exception 'not an Instagram username: %', owner_name;
@@ -66,6 +89,9 @@ begin
     raise exception 'too many shares in the last hour, try again later';
   end if;
   if only_if_missing then
+    if stored_hash is not null then
+      return false; -- its owner publishes with a key now; old links are older than that
+    end if;
     made := (select created_at from shares where id = from_share);
     if made is null then
       insert into graphs (owner, data, people) values (owner_name, graph_data, people_count)
@@ -77,8 +103,13 @@ begin
     end if;
     return found;
   end if;
-  insert into graphs (owner, data, people) values (owner_name, graph_data, people_count)
-    on conflict (owner) do update set data = excluded.data, updated_at = now(), people = excluded.people;
+  if stored_hash is not null and stored_hash is distinct from key_hash(owner_key) then
+    raise exception 'this graph was published from another browser; only that one can replace it';
+  end if;
+  insert into graphs (owner, data, people, key_hash) values (owner_name, graph_data, people_count, key_hash(owner_key))
+    on conflict (owner) do update set data = excluded.data, updated_at = now(), people = excluded.people,
+      key_hash = coalesce(graphs.key_hash, excluded.key_hash);
+  delete from graph_people where owner = owner_name; -- refilled by save_people
   return true;
 end $$;
 
@@ -86,7 +117,9 @@ end $$;
 -- Returns how many people were added or changed.
 -- A missing or empty name or photo keeps the one already stored. only_if_missing: fills
 -- gaps only, for copying old links over.
-create or replace function save_people(rows jsonb, only_if_missing boolean default false)
+-- owner_name: whose graph these people are in (for unpublish).
+drop function if exists save_people(jsonb, boolean);
+create or replace function save_people(rows jsonb, only_if_missing boolean default false, owner_name text default null)
 returns integer
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -119,7 +152,36 @@ begin
               else coalesce(excluded.photo_type, p.photo_type) end)
         is distinct from (p.name, p.flags, p.photo, p.photo_type);
   get diagnostics saved = row_count;
+  if owner_name is not null and exists (select from graphs where owner = owner_name) then
+    insert into graph_people (owner, username)
+    select owner_name, r->>'u' from jsonb_array_elements(rows) r
+    where r->>'u' ~ '^[A-Za-z0-9._]{1,30}$'
+    on conflict do nothing;
+  end if;
   return saved;
+end $$;
+
+-- Takes a graph off the list, with the key of the browser that published it. The names
+-- and photos only that graph had go too; people in someone else's graph stay for theirs.
+create or replace function unpublish(owner_name text, owner_key text)
+returns boolean
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  stored_hash text := (select g.key_hash from graphs g where g.owner = owner_name);
+begin
+  if not exists (select from graphs where owner = owner_name) then
+    return false;
+  end if;
+  if stored_hash is null or stored_hash is distinct from key_hash(owner_key) then
+    raise exception 'only the browser that published this graph can unpublish it';
+  end if;
+  delete from people p
+  where exists (select from graph_people gp where gp.owner = owner_name and gp.username = p.username)
+    and not exists (select from graph_people gp where gp.owner <> owner_name and gp.username = p.username)
+    and not exists (select from graphs g where g.owner <> owner_name and g.owner = p.username);
+  delete from graph_people where owner = owner_name;
+  delete from graphs where owner = owner_name;
+  return true;
 end $$;
 
 -- The owner's graph and when it was shared, or no row.
@@ -150,13 +212,15 @@ language sql stable security definer set search_path = public, pg_temp as $$
 $$;
 
 revoke all on function storage_left() from public;
-revoke all on function save_graph(text, text, boolean, text, integer) from public;
+revoke all on function save_graph(text, text, boolean, text, integer, text) from public;
+revoke all on function unpublish(text, text) from public;
 revoke all on function list_graphs() from public;
-revoke all on function save_people(jsonb, boolean) from public;
+revoke all on function save_people(jsonb, boolean, text) from public;
 revoke all on function get_graph(text) from public;
 revoke all on function get_people(text[]) from public;
-grant execute on function save_graph(text, text, boolean, text, integer) to share_client;
+grant execute on function save_graph(text, text, boolean, text, integer, text) to share_client;
+grant execute on function unpublish(text, text) to share_client;
 grant execute on function list_graphs() to share_client;
-grant execute on function save_people(jsonb, boolean) to share_client;
+grant execute on function save_people(jsonb, boolean, text) to share_client;
 grant execute on function get_graph(text) to share_client;
 grant execute on function get_people(text[]) to share_client;

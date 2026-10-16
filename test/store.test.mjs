@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listGraphs, loadGraph, loadPeople, saveGraph } from '../extension/lib/store.js';
+import { listGraphs, loadGraph, loadPeople, publishedHere, saveGraph, unpublishGraph } from '../extension/lib/store.js';
 import { buildHash, parseHash } from '../extension/lib/share.js';
 import { mergeGraphs, ownGraph } from '../extension/lib/merge.js';
 
@@ -11,6 +11,7 @@ function fakeNeon() {
   const graphs = new Map();
   const dates = new Map(); // owner -> when the stored graph was shared
   const counts = new Map(); // owner -> people in it
+  const keys = new Map(); // owner -> the key that published it
   const shareDates = new Map([['old', 1], ['newer', 50]]); // old share id -> when it was made
   let clock = 10;
   const people = new Map();
@@ -19,8 +20,13 @@ function fakeNeon() {
     const { query, params } = JSON.parse(init.body);
     calls.push(query);
     const ok = (rows) => new Response(JSON.stringify({ rows }));
-    if (query === 'select save_graph($1, $2, $3, $4, $5)') {
-      const [owner, data, onlyIfMissing, fromShare, count] = params;
+    if (query === 'select save_graph($1, $2, $3, $4, $5, $6)') {
+      const [owner, data, onlyIfMissing, fromShare, count, key] = params;
+      if (keys.has(owner) && (onlyIfMissing || keys.get(owner) !== key)) {
+        if (onlyIfMissing) return ok([[false]]);
+        return new Response(JSON.stringify({ message: 'this graph was published from another browser' }), { status: 400 });
+      }
+      if (key) keys.set(owner, key);
       counts.set(owner, count);
       const made = shareDates.get(fromShare);
       if (onlyIfMissing && graphs.has(owner) && !(made && made > dates.get(owner))) return ok([[false]]);
@@ -28,7 +34,13 @@ function fakeNeon() {
       dates.set(owner, onlyIfMissing && made ? made : ++clock);
       return ok([[true]]);
     }
-    if (query === 'select save_people($1::jsonb, $2)') {
+    if (query === 'select unpublish($1, $2)') {
+      const [owner, key] = params;
+      if (keys.get(owner) !== key) return new Response(JSON.stringify({ message: 'only the browser that published' }), { status: 400 });
+      graphs.delete(owner);
+      return ok([[true]]);
+    }
+    if (query === 'select save_people($1::jsonb, $2, $3)') {
       const [rows, onlyIfMissing] = params;
       for (const r of JSON.parse(rows)) {
         const old = people.get(r.u);
@@ -97,13 +109,17 @@ test('copying an old link over never replaces what is already stored', async () 
 
 test('an old link made after the stored graph replaces it, in whatever order they are opened', async () => {
   const neon = fakeNeon();
-  await saveGraph({ owner: 'me', g: 'SHARED AT 11', ids: new Set() }, neon);
-  assert.equal(await saveGraph({ owner: 'me', g: 'OLD LINK', ids: new Set(), onlyIfMissing: true, fromShare: 'old' }, neon), false);
+  // a graph that came from an old link (no key): newer old links replace it
+  assert.equal(await saveGraph({ owner: 'me', g: 'OLD LINK', ids: new Set(), onlyIfMissing: true, fromShare: 'old' }, neon), true);
   assert.equal(await saveGraph({ owner: 'me', g: 'NEWER LINK', ids: new Set(), onlyIfMissing: true, fromShare: 'newer' }, neon), true);
   assert.equal(await loadGraph('me', neon), 'NEWER LINK');
   // the older one opened afterwards leaves the newer alone
   assert.equal(await saveGraph({ owner: 'me', g: 'OLD LINK', ids: new Set(), onlyIfMissing: true, fromShare: 'old' }, neon), false);
   assert.equal(await loadGraph('me', neon), 'NEWER LINK');
+  // once published with a key, no old link replaces it
+  await saveGraph({ owner: 'me', g: 'PUBLISHED', ids: new Set() }, neon);
+  assert.equal(await saveGraph({ owner: 'me', g: 'NEWER LINK', ids: new Set(), onlyIfMissing: true, fromShare: 'newer' }, neon), false);
+  assert.equal(await loadGraph('me', neon), 'PUBLISHED');
 });
 
 test('people go up in batches small enough for the database', async () => {
@@ -153,4 +169,31 @@ test("each owner's crawl comes back out of a merged graph", () => {
   assert.deepEqual(back.nodes.map((n) => n.id).sort(), ['a', 'x', 'y']);
   assert.equal(back.links.length, 3);
   assert.deepEqual(ownGraph(merged, 'b').nodes.map((n) => n.id).sort(), ['b', 'y', 'z']);
+});
+
+test('only the browser that published a graph replaces or unpublishes it', async () => {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => store.get(k) ?? null,
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  try {
+    const neon = fakeNeon();
+    assert.equal(publishedHere('me'), false);
+    await saveGraph({ owner: 'me', g: 'MINE', ids: new Set(['me']) }, neon);
+    assert.equal(publishedHere('me'), true);
+    // another browser: no key of its own for @me
+    const mine = new Map(store);
+    store.clear();
+    await assert.rejects(saveGraph({ owner: 'me', g: 'NOT MINE', ids: new Set(['me']) }, neon), /another browser/);
+    await assert.rejects(unpublishGraph('me', neon), /only the browser/);
+    assert.equal(await loadGraph('me', neon), 'MINE');
+    // back in the publishing browser
+    for (const [k, v] of mine) store.set(k, v);
+    await unpublishGraph('me', neon);
+    assert.equal(await loadGraph('me', neon), null);
+  } finally {
+    delete globalThis.localStorage;
+  }
 });

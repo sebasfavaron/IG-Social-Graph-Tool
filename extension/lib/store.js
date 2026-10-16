@@ -54,7 +54,8 @@ async function fingerprint(g, rows) {
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
   return Array.from(hash.subarray(0, 12), (b) => b.toString(16).padStart(2, '0')).join('');
 }
-const savedKey = (owner) => `savedGraph:${owner}`;
+// (v2: saves from before owner keys must go up once more, to claim the graph with one)
+const savedKey = (owner) => `savedGraph2:${owner}`;
 function readSaved(owner) {
   try {
     return globalThis.localStorage?.getItem(savedKey(owner)) ?? null;
@@ -64,8 +65,41 @@ function readSaved(owner) {
 }
 function writeSaved(owner, print) {
   try {
-    globalThis.localStorage?.setItem(savedKey(owner), print);
+    if (print === null) globalThis.localStorage?.removeItem(savedKey(owner));
+    else globalThis.localStorage?.setItem(savedKey(owner), print);
   } catch (_) {}
+}
+
+// The owner key: a random secret made by the browser that first publishes a graph, kept
+// only there (the database stores its hash). With it that browser can replace or
+// unpublish the graph; nobody else can. Clearing this site's data loses it, and then only
+// whoever runs the database can free the graph.
+const ownerKeyName = (owner) => `ownerKey:${owner}`;
+function readOwnerKey(owner) {
+  try {
+    return globalThis.localStorage?.getItem(ownerKeyName(owner)) ?? null;
+  } catch (_) {
+    return null;
+  }
+}
+function ownerKey(owner) {
+  let key = readOwnerKey(owner);
+  if (key) return key;
+  key = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('');
+  try {
+    globalThis.localStorage?.setItem(ownerKeyName(owner), key);
+  } catch (_) {}
+  return key;
+}
+// whether this browser published the owner's graph (and so may unpublish it)
+export const publishedHere = (owner) => !!readOwnerKey(owner);
+
+// Takes the owner's graph off the shared list, with the names and photos only it had.
+export async function unpublishGraph(owner, { fetchImpl = fetch } = {}) {
+  const key = readOwnerKey(owner);
+  if (!key) throw new Error('only the browser that published this graph can unpublish it');
+  await sharesQuery('select unpublish($1, $2)', [owner, key], fetchImpl);
+  writeSaved(owner, null);
 }
 
 // Saves an owner's crawl and the people in it (only those in ids). onlyIfMissing: for
@@ -79,9 +113,10 @@ export async function saveGraph(
   const rows = peopleRows(ids, profiles, photos);
   const print = await fingerprint(g, rows);
   if (!onlyIfMissing && readSaved(owner) === print) return true;
+  // copying an old link over is not publishing: it carries no key, and claims nothing
   const [[saved]] = await sharesQuery(
-    'select save_graph($1, $2, $3, $4, $5)',
-    [owner, g, onlyIfMissing, fromShare, ids.size],
+    'select save_graph($1, $2, $3, $4, $5, $6)',
+    [owner, g, onlyIfMissing, fromShare, ids.size, onlyIfMissing ? null : ownerKey(owner)],
     fetchImpl
   );
   if (!saved && onlyIfMissing) return false;
@@ -89,7 +124,7 @@ export async function saveGraph(
   let size = 0;
   const flush = async () => {
     if (!batch.length) return;
-    await sharesQuery('select save_people($1::jsonb, $2)', [JSON.stringify(batch), onlyIfMissing], fetchImpl);
+    await sharesQuery('select save_people($1::jsonb, $2, $3)', [JSON.stringify(batch), onlyIfMissing, owner], fetchImpl);
     batch = [];
     size = 0;
   };

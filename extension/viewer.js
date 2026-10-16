@@ -4,7 +4,7 @@ import { pruneLoneNodes } from './lib/prune.js';
 import { friendGroups } from './lib/groups.js';
 import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
 import { downloadShare, photosFromThumbs, unpackShare, unseal } from './lib/vault.js';
-import { listGraphs, loadGraph, loadPeople, loadPhotos, saveGraph } from './lib/store.js';
+import { listGraphs, loadGraph, loadPeople, loadPhotos, publishedHere, saveGraph, unpublishGraph } from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { lang, setLang, t, translateStatic } from './lib/i18n.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
@@ -785,8 +785,13 @@ $('lang').onclick = () => {
   setLang(lang === 'es' ? 'en' : 'es');
   applyLanguage();
 };
+// every string comes from i18n.js, Spanish too: text left out of the markup would
+// otherwise stay blank until someone switched languages
 if (lang !== 'es') applyLanguage();
-else updateLangButton();
+else {
+  translateStatic();
+  updateLangButton();
+}
 
 // Esc clears the selection (search handles its own Esc)
 document.addEventListener('keydown', (e) => {
@@ -1125,6 +1130,9 @@ function unpublished() {
   return [...parts].filter(([o]) => !storedOwners.has(o));
 }
 function updateShareButton() {
+  // unpublishing: one person's graph on screen, published from this very browser
+  const single = parts.size === 1 ? [...parts.keys()][0] : null;
+  $('unpublish').hidden = !shown || !single || !publishedHere(single);
   const publishes = unpublished().length > 0;
   const button = $('share');
   button.classList.toggle('publishes', publishes);
@@ -1144,6 +1152,37 @@ $('share').onclick = () => {
   $('publish-cancel').focus(); // the safe choice is the one Enter picks
 };
 $('publish-cancel').onclick = () => $('publish-dialog').close();
+
+$('unpublish').onclick = () => {
+  const [owner] = parts.keys();
+  $('unpublish-lead').textContent = t('unpublishLead', owner);
+  $('unpublish-error').hidden = true;
+  $('unpublish-dialog').showModal();
+  $('unpublish-cancel').focus();
+};
+$('unpublish-cancel').onclick = () => $('unpublish-dialog').close();
+$('unpublish-go').onclick = async () => {
+  const [owner] = parts.keys();
+  $('unpublish-go').disabled = true;
+  try {
+    await unpublishGraph(owner);
+  } catch (err) {
+    $('unpublish-error').textContent = t('couldNotUnpublish', err.message);
+    $('unpublish-error').hidden = false;
+    return;
+  } finally {
+    $('unpublish-go').disabled = false;
+  }
+  $('unpublish-dialog').close();
+  shared = null; // the list is read again next time it opens
+  // the site was showing the stored copy, which is gone: back home. The extension keeps
+  // showing its own crawl, ready to publish again.
+  if (!inExtension) return void (location.href = location.pathname);
+  storedOwners.delete(owner);
+  updateExplore();
+  $('unpublish').hidden = true;
+  $('announce').textContent = t('unpublished');
+};
 $('publish-go').onclick = () => {
   $('publish-dialog').close();
   share();

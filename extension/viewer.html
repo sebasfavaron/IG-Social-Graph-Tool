@@ -381,7 +381,7 @@
       }
 
       /* ---- publish: what goes public, in warning colours ---- */
-      #publish-dialog {
+      .warn-dialog {
         width: min(420px, calc(100vw - 32px));
         box-sizing: border-box;
         padding: 16px 18px;
@@ -391,26 +391,26 @@
         color: var(--warn-fg);
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
       }
-      #publish-dialog::backdrop {
+      .warn-dialog::backdrop {
         background: rgba(0, 0, 0, 0.35);
       }
-      #publish-dialog h2 {
+      .warn-dialog h2 {
         margin: 0 0 8px;
         font-size: 16px;
       }
-      #publish-dialog p {
+      .warn-dialog p {
         margin: 0 0 6px;
         font-weight: 600;
       }
-      #publish-dialog ul {
+      .warn-dialog ul {
         margin: 0;
         padding-left: 18px;
         line-height: 1.5;
       }
-      #publish-dialog li + li {
+      .warn-dialog li + li {
         margin-top: 4px;
       }
-      #publish-dialog button:not(.warn) {
+      .warn-dialog button:not(.warn) {
         background: transparent;
         border-color: var(--warn-line);
       }
@@ -419,6 +419,15 @@
         border-color: var(--warn-button);
         color: var(--warn-button-fg);
         font-weight: 600;
+      }
+      #unpublish-error {
+        font-weight: 400;
+      }
+      #unpublish {
+        color: var(--muted);
+      }
+      #unpublish[hidden] {
+        display: none;
       }
       /* the header button, while it would publish */
       #share.publishes {
@@ -955,6 +964,8 @@
       </div>
       <!-- its words say whether it uploads (publish) or only copies; set by viewer.js -->
       <button id="share" hidden><span class="wide-only"></span><span class="narrow-only"></span></button>
+      <!-- only in the browser that published the graph on screen (store.js owner key) -->
+      <button id="unpublish" hidden data-i18n="unpublishButton" data-i18n-title="unpublishButtonTitle"></button>
       <button id="combine" hidden data-i18n-title="combineTitle" title="Elegí de quiénes ver los grafos juntos">
         <span class="wide-only" data-i18n="combineWide">Combinar con amigos…</span><span class="narrow-only" data-i18n="combineNarrow">Amigos</span>
       </button>
@@ -1012,7 +1023,7 @@
       <p id="photo-caption"></p>
     </dialog>
 
-    <dialog id="publish-dialog" aria-labelledby="publish-title">
+    <dialog id="publish-dialog" class="warn-dialog" aria-labelledby="publish-title">
       <h2 id="publish-title"><span aria-hidden="true">⚠</span> <span data-i18n="publishTitle">Esto es público</span></h2>
       <p id="publish-lead"></p>
       <ul>
@@ -1023,6 +1034,21 @@
       <div class="actions">
         <button type="button" id="publish-cancel" data-i18n="cancel">Cancelar</button>
         <button type="button" id="publish-go" class="warn" data-i18n="publishGo">Publicar y copiar link</button>
+      </div>
+    </dialog>
+
+    <dialog id="unpublish-dialog" class="warn-dialog" aria-labelledby="unpublish-title">
+      <h2 id="unpublish-title"><span aria-hidden="true">⚠</span> <span data-i18n="unpublishTitle"></span></h2>
+      <p id="unpublish-lead"></p>
+      <ul>
+        <li data-i18n="unpublishWhat"></li>
+        <li data-i18n="unpublishPeople"></li>
+        <li data-i18n="unpublishAgain"></li>
+      </ul>
+      <p id="unpublish-error" role="alert" hidden></p>
+      <div class="actions">
+        <button type="button" id="unpublish-cancel" data-i18n="cancel"></button>
+        <button type="button" id="unpublish-go" class="warn" data-i18n="unpublishGo"></button>
       </div>
     </dialog>
 

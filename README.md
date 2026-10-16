@@ -39,6 +39,8 @@ Requests go from an instagram.com tab with your own session, and the data stays 
 
 The database keeps one graph per person and one row per Instagram account. Someone who is in two friends' graphs is stored once, and sharing again replaces your graph instead of adding a copy (sharing twice without changes uploads nothing). The link always opens your latest share.
 
+**Only the browser that published a graph can replace or unpublish it.** The first publish makes a random key that stays in that browser (the database keeps only its hash); **Unpublish** on your own graph deletes it, and the names and photos only it had, from the database. Clearing the browser's data for the extension loses the key, and then only whoever runs the database can free the graph.
+
 **Nothing in it is private.** The browser connects with a password that is in the code, so anyone can read every graph, name and photo there, and save a graph under any username ([`db/graphs.sql`](./db/graphs.sql)). It suits friends playing with it. Uploads stop at 2 MB per graph, 60 graphs an hour and 400 MB in total, which keeps strangers from filling the free tier.
 
 ### Combine two people's graphs
