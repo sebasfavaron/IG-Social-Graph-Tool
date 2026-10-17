@@ -1067,6 +1067,7 @@ function renderPicker() {
     })
   );
   dialog.classList.toggle('locked', !me());
+  $('device-link').hidden = !me();
   if (!me()) $('picker-status').textContent = t('pickerLocked');
   else if (shared && !visible.length) $('picker-status').textContent = query ? t('pickerNoMatch') : t('pickerNone');
   else if (shared) $('picker-status').textContent = full ? t('pickerMax', MAX_OWNERS) : '';
@@ -1074,6 +1075,27 @@ function renderPicker() {
   $('picker-go').disabled = !chosen.length;
 }
 $('picker-filter').oninput = renderPicker;
+
+// Your private link: the publisher key in a link, for this person's other browsers (a
+// phone has no extension to hand it over). It is a password, so it only shows here,
+// behind its warning, and never goes into a shared link.
+$('device-link').onclick = () => {
+  const who = me();
+  if (!who) return;
+  $('device-lead').textContent = t('deviceLead', who.owner);
+  $('device-url').value = `${SHARE_BASE_URL}#${identityParams().slice(1)}`;
+  $('device-dialog').showModal();
+  $('device-close').focus();
+};
+$('device-close').onclick = () => $('device-dialog').close();
+$('device-copy').onclick = async () => {
+  $('device-url').select();
+  try {
+    await navigator.clipboard.writeText($('device-url').value);
+    $('device-copy').textContent = t('linkCopied');
+    setTimeout(() => ($('device-copy').textContent = t('deviceCopy')), 2500);
+  } catch (_) {} // the link is selected in the box: copying by hand works
+};
 
 $('picker-go').onclick = async () => {
   const same = chosen.length === parts.size && chosen.every((o, i) => [...parts.keys()][i] === o);

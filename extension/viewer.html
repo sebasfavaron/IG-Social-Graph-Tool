@@ -436,6 +436,30 @@
         color: var(--warn-button-fg);
         font-weight: 600;
       }
+      #device-url {
+        box-sizing: border-box;
+        width: 100%;
+        margin-top: 10px;
+        padding: 6px 8px;
+        font: 12px ui-monospace, monospace;
+        color: inherit;
+        background: transparent;
+        border: 1px solid var(--warn-line);
+        border-radius: 6px;
+      }
+      #device-link {
+        display: block;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--muted);
+        font-size: 12px;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      #device-link[hidden] {
+        display: none;
+      }
       #unpublish-error {
         font-weight: 400;
       }
@@ -1240,6 +1264,21 @@
       </div>
     </dialog>
 
+    <dialog id="device-dialog" class="warn-dialog" aria-labelledby="device-title">
+      <h2 id="device-title"><span aria-hidden="true">⚠</span> <span data-i18n="deviceTitle"></span></h2>
+      <p id="device-lead"></p>
+      <ul>
+        <li data-i18n="deviceKey"></li>
+        <li data-i18n="deviceSend"></li>
+        <li data-i18n="deviceAgain"></li>
+      </ul>
+      <input id="device-url" readonly aria-labelledby="device-title" spellcheck="false" />
+      <div class="actions">
+        <button type="button" id="device-close" data-i18n="close"></button>
+        <button type="button" id="device-copy" class="warn" data-i18n="deviceCopy"></button>
+      </div>
+    </dialog>
+
     <dialog id="combine-dialog" class="panel-box" aria-labelledby="combine-title">
       <h2 id="combine-title" data-i18n="pickerTitle">Grafos compartidos</h2>
       <p id="picker-text" class="muted" data-i18n="pickerText">Elegí a quiénes ver juntos, hasta 5. Sus círculos se dibujan en un solo grafo.</p>
@@ -1247,6 +1286,7 @@
       <input id="picker-filter" type="search" placeholder="Buscar entre los grafos" data-i18n-placeholder="pickerFilter" autocomplete="off" spellcheck="false" hidden />
       <ul id="picker-list" aria-labelledby="combine-title"></ul>
       <p id="picker-status" class="muted" role="status"></p>
+      <button type="button" id="device-link" hidden data-i18n="deviceButton"></button>
       <div class="actions">
         <button type="button" id="combine-cancel" data-i18n="cancel">Cancelar</button>
         <button type="button" id="picker-go" class="primary">Ver</button>
