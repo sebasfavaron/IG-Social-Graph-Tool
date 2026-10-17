@@ -1250,14 +1250,11 @@ function updateShareButton() {
   const publishes = unpublished().length > 0;
   const button = $('share');
   const waits = unpublished().some(([o]) => o === crawling);
-  const [title, wide, narrow] = waits
-    ? ['crawlingTitle', 'crawlingWide', 'crawlingNarrow']
-    : publishes
-      ? ['shareTitle', 'shareWide', 'shareNarrow']
-      : ['copyTitle', 'copyWide', 'copyNarrow'];
+  // waiting on the crawl: the same words, greyed, and the tooltip says why
+  const [title, wide, narrow] = publishes ? ['shareTitle', 'shareWide', 'shareNarrow'] : ['copyTitle', 'copyWide', 'copyNarrow'];
   button.classList.toggle('waits', waits);
   button.classList.toggle('publishes', publishes);
-  button.title = t(title);
+  button.title = t(waits ? 'crawlingTitle' : title);
   button.replaceChildren(
     Object.assign(document.createElement('span'), { className: 'wide-only', textContent: t(wide) }),
     Object.assign(document.createElement('span'), { className: 'narrow-only', textContent: t(narrow) })
