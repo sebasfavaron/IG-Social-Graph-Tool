@@ -18,7 +18,7 @@ import {
   unpublishGraph,
 } from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
-import { lang, setLang, t, translateStatic } from './lib/i18n.js';
+import { lang, setLang, t, translateStatic, why } from './lib/i18n.js';
 import { ask, hasBridge, onLocalChange } from './lib/bridge.js';
 import { drawHero } from './lib/hero.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
@@ -1008,7 +1008,7 @@ function openPicker() {
         $('picker-status').textContent = '';
         renderPicker();
       })
-      .catch((err) => ($('picker-status').textContent = t('pickerFailed', err.message)));
+      .catch((err) => ($('picker-status').textContent = t('pickerFailed', why(err.message))));
   }
 }
 $('combine').onclick = openPicker;
@@ -1106,7 +1106,7 @@ $('picker-go').onclick = async () => {
     await showOwners(chosen);
     dialog.close();
   } catch (err) {
-    $('picker-status').textContent = t('couldNotCombine', err.message);
+    $('picker-status').textContent = t('couldNotCombine', why(err.message));
   } finally {
     $('picker-go').disabled = false;
   }
@@ -1184,7 +1184,7 @@ async function openShareHash() {
       await showLocked(err.locked);
       return true;
     }
-    alert(t('didNotOpen', err.message));
+    alert(t('didNotOpen', why(err.message)));
     if (state.s || state.o) $('counts').textContent = '';
     return false;
   }
@@ -1213,6 +1213,12 @@ async function openShareHash() {
 // Both can fire for one step, so a step is handled once.
 let navigating = false;
 function onNavigate() {
+  // a private link pasted into an open tab only changes the hash: take it, and start over
+  const cleaned = takeIdentity(location.hash);
+  if (cleaned !== null) {
+    history.replaceState(null, '', location.pathname + location.search + cleaned);
+    return location.reload();
+  }
   // back to the site's bare address: its home, the list, as on a first visit
   if (!location.hash && !inExtension) return location.reload();
   if (navigating) return;
@@ -1270,7 +1276,7 @@ $('unpublish-go').onclick = async () => {
   try {
     await unpublishGraph(owner);
   } catch (err) {
-    $('unpublish-error').textContent = t('couldNotUnpublish', err.message);
+    $('unpublish-error').textContent = t('couldNotUnpublish', why(err.message));
     $('unpublish-error').hidden = false;
     return;
   } finally {
@@ -1318,7 +1324,7 @@ async function share() {
     if (!isStored() && !encoded) encoded = await encodeGraph(shown);
   } catch (err) {
     updateShareButton();
-    alert(t('couldNotShare', err.message));
+    alert(t('couldNotShare', why(err.message)));
     return;
   } finally {
     button.disabled = false;

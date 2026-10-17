@@ -73,6 +73,13 @@ const STRINGS = {
     pickerPeople: (n) => `${n} personas`,
     pickerUnshared: 'sin compartir',
     cancel: 'Cancelar',
+    'e.otherBrowser': 'este grafo se publicó desde otro navegador y solo ese puede reemplazarlo. Abrí el sitio con el botón de la extensión que lo publicó, o con tu link privado',
+    'e.notYours': 'solo el navegador que publicó este grafo puede despublicarlo',
+    'e.tooOften': 'hubo demasiadas publicaciones en la última hora, probá más tarde',
+    'e.full': 'el espacio para grafos compartidos está lleno',
+    'e.tooBig': 'el grafo es demasiado grande (2 MB como máximo)',
+    'e.tooMany': 'el grafo tiene demasiadas personas',
+    'e.noExtension': 'la extensión no respondió',
     deviceButton: 'Abrir en tu celular',
     deviceTitle: 'Tu link privado',
     deviceLead: (owner) => `Abrilo en tu celular, o en otro navegador, y ahí también vas a ser @${owner}: ves tu red y podés despublicar.`,
@@ -209,6 +216,13 @@ const STRINGS = {
     pickerPeople: (n) => `${n} people`,
     pickerUnshared: 'not shared',
     cancel: 'Cancel',
+    'e.otherBrowser': 'this graph was published from another browser, and only that one can replace it. Open the site with the button of the extension that published it, or with your private link',
+    'e.notYours': 'only the browser that published this graph can unpublish it',
+    'e.tooOften': 'too many publishes in the last hour, try again later',
+    'e.full': 'the space for shared graphs is full',
+    'e.tooBig': 'the graph is too big (2 MB at most)',
+    'e.tooMany': 'the graph has too many people',
+    'e.noExtension': "the extension didn't answer",
     deviceButton: 'Open on your phone',
     deviceTitle: 'Your private link',
     deviceLead: (owner) => `Open it on your phone, or in another browser, and you're @${owner} there too: you see your network and can unpublish.`,
@@ -669,6 +683,21 @@ export let lang = saved() || 'es';
 export function t(key, ...args) {
   const value = STRINGS[lang][key] ?? STRINGS.en[key] ?? key;
   return typeof value === 'function' ? value(...args) : value;
+}
+
+// The database and the extension answer in English; the known answers, in the page's language
+const ERRORS = [
+  [/published from another browser/, 'e.otherBrowser'],
+  [/only the browser that published/, 'e.notYours'],
+  [/too many shares/, 'e.tooOften'],
+  [/storage is full/, 'e.full'],
+  [/too big/, 'e.tooBig'],
+  [/too many people/, 'e.tooMany'],
+  [/extension did not answer/, 'e.noExtension'],
+];
+export function why(message) {
+  const known = ERRORS.find(([pattern]) => pattern.test(message || ''));
+  return known ? t(known[1]) : message;
 }
 
 export function setLang(next) {
