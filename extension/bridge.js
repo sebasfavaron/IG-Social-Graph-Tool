@@ -6,11 +6,16 @@
 // Page -> here:  window.postMessage({ source: 'igsg-page', id, type, ...args })
 // here -> page:  { source: 'igsg-extension', id, ok, data | error }
 //                { source: 'igsg-extension', type: 'changed' } when the crawl or photos change
+//
+// Version 2 passes every request on (the crawler decides what exists) except deleting
+// the data, which stays in the popup; version 1 passed a fixed list.
 (() => {
-  const VERSION = 1;
-  // what the page may ask the crawler for; deleting the data stays in the popup
-  const CRAWLER = new Set(['getState', 'start', 'resume', 'pause', 'refreshProfiles', 'profilePhoto']);
-  document.documentElement.dataset.igsgBridge = String(VERSION); // read by the page at once
+  const VERSION = 2;
+  const root = document.documentElement;
+  // two copies of the extension installed: the first one answers, the other stays out
+  if (root.dataset.igsgBridge) return;
+  root.dataset.igsgBridge = String(VERSION); // read by the page at once
+  root.dataset.igsgVersion = chrome.runtime.getManifest().version;
 
   const post = (message) => window.postMessage({ source: 'igsg-extension', ...message }, location.origin);
   window.addEventListener('message', async (event) => {
@@ -21,11 +26,9 @@
         const { crawl, thumbs } = await chrome.storage.local.get(['crawl', 'thumbs']);
         return post({ id, ok: true, data: { crawl: crawl || null, thumbs: thumbs || {} } });
       }
-      if (CRAWLER.has(type)) {
-        const res = await chrome.runtime.sendMessage({ type, ...args });
-        return post({ id, ok: !!res?.ok, data: res?.data, error: res?.error });
-      }
-      post({ id, ok: false, error: `unknown request: ${type}` });
+      if (type === 'reset') return post({ id, ok: false, error: 'not from a page' });
+      const res = await chrome.runtime.sendMessage({ type, ...args });
+      post({ id, ok: !!res?.ok, data: res?.data, error: res?.error ?? (res ? undefined : `unknown request: ${type}`) });
     } catch (err) {
       post({ id, ok: false, error: String(err?.message || err) });
     }

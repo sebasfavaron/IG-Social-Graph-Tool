@@ -10,11 +10,11 @@ Not technical? [**The install page**](https://sebasfavaron.github.io/IG-Social-G
 
 1. Download [`ig-social-graph.zip`](https://sebasfavaron.github.io/IG-Social-Graph-Tool/ig-social-graph.zip) (or clone this repo), open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the unzipped folder (or [`extension/`](./extension)). Keep the folder: Chrome runs the extension from it, and does not update it on its own.
 2. Log in to [instagram.com](https://www.instagram.com) in that browser.
-3. Click the extension icon → **Start**. It lists your followers, then asks Instagram, for each of them, which accounts you follow also follow them.
-4. Leave it running. The popup shows progress and the time left, measured from the pace so far (Instagram's pauses included); the icon badge shows the percentage. You can close the popup, pause and resume, or restart the browser: progress is saved.
-5. **View & publish on the web** opens the site, which reads your crawl from the extension and draws it. There, **Publish & copy link** makes your graph visible to your network (it asks first, in warning colours) and copies a short link.
+3. Click the extension icon → **Open the site**, and **Start** in the mapping panel at the bottom right. It lists your followers, then asks Instagram, for each of them, which accounts you follow also follow them.
+4. Leave it running. The panel shows progress and the time left, measured from the pace so far (Instagram's pauses included); the popup gives the same in one line and the icon badge shows the percentage. The crawl runs in the extension: you can close the site, pause and resume, or restart the browser, and progress is saved.
+5. The site reads your crawl from the extension and draws it. There, **Publish & copy link** makes your graph visible to your network (it asks first, in warning colours) and copies a short link.
 
-The crawl also keeps everyone's real name and profile photo, which come with the same lists at no extra request. A crawl made before that can get them with **Get names & photos** in the popup: your followers list again, about one request per 50 followers.
+The crawl also keeps everyone's real name and profile photo, which come with the same lists at no extra request. A crawl made before that can get them with **Get names & photos** in the site's mapping panel: your followers list again, about one request per 50 followers.
 
 Requests go from an instagram.com tab with your own session, and the data stays in the extension's local storage. Nothing is sent anywhere else.
 
@@ -74,7 +74,7 @@ Every link to the site shows the same preview card in chats ([`extension/og.png`
 ### Limits and gotchas
 
 - **Speed.** One request every ~6 s by default (Settings). A follower with many mutuals takes more than one request. 500 followers ≈ 1 hour, more if Instagram pushes back.
-- **Instagram pushing back.** If Instagram answers "please wait" or HTTP 429, the crawl pauses on its own for 15 min, doubling up to 2 h, and resumes. If it asks you to confirm it's you, the popup says so; finish the check on instagram.com and press Resume.
+- **Instagram pushing back.** If Instagram answers "please wait" or HTTP 429, the crawl pauses on its own for 15 min, doubling up to 2 h, and resumes. If it asks you to confirm it's you, the mapping panel says so; finish the check on instagram.com and press Resume.
 - **Keep an instagram.com tab open.** The extension opens one in the background if there is none, and marks it so Memory Saver does not discard it.
 - **Followers to check** (Settings) caps the second phase, handy for a quick first look. Raise it later and Resume to continue.
 - **"You follow" only counts people who follow at least one of your followers**: Instagram's "followed by" lists, the only place the crawl learns whom you follow, name no one else.
@@ -102,7 +102,7 @@ Every link to the site shows the same preview card in chats ([`extension/og.png`
 | `extension/lib/groupNames.js` | keeps each friend-group name on its group across crawls |
 | `extension/lib/merge.js` | combines two graphs and tells whose circle each person is in |
 | `extension/explore.html`, `explore.js` | SQL over shared graphs (sql.js), site only |
-| `extension/bridge.js`, `extension/lib/bridge.js` | the extension's side (content script on the site only) and the page's side of reading the local crawl and talking to the crawler |
+| `extension/bridge.js`, `extension/lib/bridge.js` | the extension's side (content script on the site only) and the page's side of reading the local crawl and talking to the crawler; it passes every request on except deleting the data, so only crawler changes need an extension update |
 | `extension/lib/i18n.js` | the viewer's words in Spanish (default) and English; static text in viewer.html carries `data-i18n` keys |
 | `extension/lib/store.js` | shared database: saves and reads graphs by owner and people by username through Neon's HTTP SQL endpoint |
 | `extension/lib/vault.js` | older encrypted shares: reads them so the viewer can copy them over |
@@ -111,7 +111,9 @@ Every link to the site shows the same preview card in chats ([`extension/og.png`
 | `extension/viewer.html`, `viewer.js` | the page: panel, search, groups key, themes, link state |
 | `extension/lib/hero.js` | the site's front page for newcomers: a made-up graph that turns and lights one friend group at a time |
 | `extension/install.html` | site only: step-by-step install for non-technical people; phones and non-Chromium browsers get told to switch |
-| `extension/welcome.html`, `welcome.js` | opens on first install: pin the icon, log in, Start, progress |
+| `extension/welcome.html`, `welcome.js` | site only (the extension opens it on first install): pin the icon, log in, Start, progress, through the bridge |
+| `extension/lib/crawlPanel.js`, `crawlStatus.js` | the site's mapping panel (start, pause, progress, settings) and the words for a crawl's state, shared with the popup |
+| `extension/popup.html`, `popup.js` | one line of progress, **Open the site**, and deleting the data (which no web page can do) |
 
 ### Credits
 

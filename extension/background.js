@@ -1,3 +1,4 @@
+import { SHARE_BASE_URL } from './lib/share.js';
 import { IG_APP_ID, STATUS, estimateRemaining, initialState, progress, startProfileRefresh, step, tickClock } from './lib/crawler.js';
 
 // The service worker owns the crawl state; popup and viewer only send messages.
@@ -343,8 +344,9 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 chrome.runtime.onInstalled.addListener(({ reason }) => {
   chrome.alarms.create('watchdog', { periodInMinutes: 0.5 });
-  // first install only: reloading the unpacked extension reports 'update'
-  if (reason === 'install') chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
+  // first install only: reloading the unpacked extension reports 'update'. The welcome
+  // page is the site's, so it can change without an update.
+  if (reason === 'install') chrome.tabs.create({ url: `${SHARE_BASE_URL}welcome.html` });
 });
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create('watchdog', { periodInMinutes: 0.5 });
@@ -375,6 +377,12 @@ function summary() {
 const handlers = {
   async getState() {
     return summary();
+  },
+  // what the site's pages cannot see for themselves
+  async env() {
+    const cookie = await chrome.cookies.get({ url: 'https://www.instagram.com', name: 'ds_user_id' });
+    const settings = await chrome.action.getUserSettings?.().catch(() => null);
+    return { loggedIn: !!cookie?.value, pinned: settings ? !!settings.isOnToolbar : null, version: chrome.runtime.getManifest().version };
   },
   async start({ settings }) {
     const viewer = await detectViewer();
@@ -418,9 +426,11 @@ const handlers = {
   },
 };
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const handler = handlers[msg?.type];
   if (!handler) return false;
+  // a web page (through bridge.js) never deletes the data: only the popup does
+  if (msg.type === 'reset' && sender.tab) return sendResponse({ ok: false, error: 'not from a page' }), false;
   load()
     .then(() => handler(msg))
     .then((data) => sendResponse({ ok: true, data }))

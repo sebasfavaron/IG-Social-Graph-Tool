@@ -1,33 +1,27 @@
 import { formatDuration } from './lib/format.js';
-import { lang, langButton, t, translateStatic } from './lib/i18n.js';
+import { lang, langButton, t, translateStatic, why } from './lib/i18n.js';
+import { ask, hasBridge, onLocalChange } from './lib/bridge.js';
+import { target } from './lib/crawlStatus.js';
 
 // Opened once, right after the extension is installed (background.js). Walks someone
-// who has never seen the popup through pinning the icon, logging in and starting.
+// who has never seen the extension through pinning the icon, logging in and starting.
+// It is the site's page, talking to the extension through its bridge (bridge.js), so it
+// can change without an update.
 
 const $ = (id) => document.getElementById(id);
 const IG_ORIGIN = 'https://www.instagram.com';
 
-async function send(type, extra = {}) {
-  const res = await chrome.runtime.sendMessage({ type, ...extra });
-  if (!res?.ok) throw new Error(res?.error || t('w.noResponse'));
-  return res.data;
-}
-
-// Chrome has no event for pinning, so this asks every second while the step is open.
-async function checkPinned() {
-  const settings = await chrome.action.getUserSettings?.().catch(() => null);
-  const pinned = !!settings?.isOnToolbar;
+// Chrome has no event for pinning or logging in, so this asks every second and a half
+// until both are done.
+async function checkEnv() {
+  const env = await ask('env').catch(() => null);
+  const pinned = env?.pinned ?? true; // unknown: skip the step rather than stick on it
+  const loggedIn = env?.loggedIn ?? false;
   $('pin-step').classList.toggle('done', pinned);
-  if (!pinned) setTimeout(checkPinned, 1000);
-}
-
-let loggedIn = false;
-async function checkLogin() {
-  const cookie = await chrome.cookies.get({ url: IG_ORIGIN, name: 'ds_user_id' });
-  loggedIn = !!cookie?.value;
   $('login-step').classList.toggle('done', loggedIn);
   $('start').disabled = !loggedIn;
   $('start-hint').hidden = loggedIn;
+  if (!pinned || !loggedIn) setTimeout(checkEnv, 1500);
 }
 
 const STATUS_TEXT = {
@@ -45,17 +39,17 @@ function render(s) {
   $('during').hidden = !s;
   $('start-step').classList.toggle('done', s?.status === 'done');
   if (!s) return;
-  const target = s.settings.maxFollowers ? Math.min(s.settings.maxFollowers, s.total) : s.total;
+  const all = target(s);
   $('status').textContent = STATUS_TEXT[s.status]?.(s) || s.status;
-  $('bar').style.width = s.phase === 'followers' ? '3%' : `${target ? (100 * s.done) / target : 0}%`;
+  $('bar').style.width = s.phase === 'followers' ? '3%' : `${all ? (100 * s.done) / all : 0}%`;
   $('eta').textContent =
     s.status === 'done'
-      ? t('w.checkedAll', target)
+      ? t('w.checkedAll', all)
       : s.phase === 'followers'
         ? t('w.found', s.total)
-        : t('w.progress', s.done, target) + (s.remaining?.measured ? t('w.left', formatDuration(s.remaining.ms)) : '.');
+        : t('w.progress', s.done, all) + (s.remaining?.measured ? t('w.left', formatDuration(s.remaining.ms)) : '.');
   $('error').hidden = !s.error || s.status === 'running' || s.status === 'cooldown';
-  $('error').textContent = s.error || '';
+  $('error').textContent = why(s.error || '');
   $('close-hint').hidden = s.status === 'done';
   $('view').hidden = !s.links;
   $('view').textContent = t(s.status === 'done' ? 'w.see' : 'w.seeSoFar');
@@ -63,41 +57,44 @@ function render(s) {
 
 async function refresh() {
   try {
-    render(await send('getState'));
+    render(await ask('getState'));
   } catch (err) {
     $('error').hidden = false;
-    $('error').textContent = err.message;
+    $('error').textContent = why(err.message);
   }
 }
 
-$('open-ig').onclick = () => chrome.tabs.create({ url: IG_ORIGIN + '/' });
+$('open-ig').onclick = () => window.open(`${IG_ORIGIN}/`, '_blank', 'noopener');
 $('start').onclick = async () => {
   $('start').disabled = true;
   try {
-    render(await send('start', { settings: {} }));
+    render(await ask('start', { settings: {} }));
   } catch (err) {
     $('start').disabled = false;
     $('start-hint').hidden = false;
-    $('start-hint').textContent = err.message;
+    $('start-hint').textContent = why(err.message);
   }
 };
-$('view').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
-
-chrome.cookies.onChanged.addListener(({ cookie }) => {
-  if (cookie.name === 'ds_user_id' && cookie.domain.endsWith('instagram.com')) checkLogin();
-});
-chrome.storage.onChanged.addListener((changes) => changes.crawl && refresh());
+// the site's graph page: it reads the crawl through the bridge too
+$('view').onclick = () => (location.href = './');
 
 function paint() {
   translateStatic();
   document.title = t('w.pageTitle');
 }
+document.documentElement.lang = lang;
 paint();
 langButton($('lang'), () => {
   paint();
   render(last);
 });
 
-checkPinned();
-checkLogin();
-refresh();
+if (hasBridge()) {
+  onLocalChange(refresh);
+  checkEnv();
+  refresh();
+} else {
+  // opened without the extension (or before it finished loading): the way to get it
+  $('no-extension').hidden = false;
+  for (const step of document.querySelectorAll('.step')) step.hidden = true;
+}

@@ -20,6 +20,7 @@ import {
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { lang, setLang, t, translateStatic, why } from './lib/i18n.js';
 import { ask, hasBridge, onLocalChange } from './lib/bridge.js';
+import { paint as paintCrawlPanel, startCrawlPanel } from './lib/crawlPanel.js';
 import { drawHero } from './lib/hero.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
 
@@ -811,6 +812,7 @@ function applyLanguage() {
   document.documentElement.lang = lang;
   translateStatic();
   renderEmptyText();
+  if (bridged) paintCrawlPanel();
   updateLangButton();
   updateThemeButton();
   renderHeading();
@@ -1472,6 +1474,8 @@ $('invite').href = INSTALL_URL;
 $('invite').hidden = hasLocal; // the site's corner: map your own (unless the extension is here)
 renderEmptyText();
 const local = hasLocal ? await readLocal() : {};
+// the crawl's controls: on the site, through the bridge (the popup only opens the site)
+if (bridged) startCrawlPanel();
 if (hasLocal) {
   if (local.crawl && local.crawl.status !== 'done') crawling = local.crawl.viewer?.username ?? null;
   profiles = ownProfiles = local.crawl?.profiles || {};

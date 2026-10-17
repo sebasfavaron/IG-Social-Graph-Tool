@@ -160,46 +160,17 @@
         <button id="lang">EN</button>
       </span>
     </h1>
-    <div id="status" class="muted" data-i18n="p.loading">Cargando…</div>
+    <div id="status" class="muted" aria-live="polite" data-i18n="p.loading">Cargando…</div>
     <div class="bar"><div id="bar"></div></div>
-    <dl id="stats" hidden>
-      <dt data-i18n="p.account">Cuenta</dt>
-      <dd id="viewer"></dd>
-      <dt data-i18n="p.checked">Seguidores revisados</dt>
-      <dd id="checked"></dd>
-      <dt data-i18n="p.connections">Conexiones</dt>
-      <dd id="links"></dd>
-      <dt data-i18n="p.requests">Pedidos</dt>
-      <dd id="requests"></dd>
-      <dt data-i18n="p.timeLeft">Tiempo restante</dt>
-      <dd id="eta"></dd>
-    </dl>
     <div id="error" class="error" hidden></div>
 
+    <!-- everything else about the crawl (start, pause, settings) is on the site -->
     <div class="row">
-      <button id="login" class="primary" hidden data-i18n="p.openInstagram">Abrir Instagram</button>
-      <button id="start" class="primary">Empezar</button>
-      <button id="resume" class="primary" hidden data-i18n="p.resume">Seguir</button>
-      <button id="pause" hidden data-i18n="p.pause">Pausar</button>
-      <button id="profiles" hidden data-i18n-title="p.profilesTitle" title="Vuelve a listar tus seguidores (más o menos un pedido cada 50) para traer nombres reales y fotos de perfil">
-        Traer nombres y fotos
-      </button>
-    </div>
-    <p id="intro" class="muted" hidden>
-      <span data-i18n="p.intro">Tus datos quedan en este navegador hasta que los compartís. </span><a id="guide" href="welcome.html" data-i18n="p.guide">Guía paso a paso</a>
-    </p>
-    <div class="row">
-      <button id="view" class="primary" data-i18n="p.view">Ver y publicar en la web ↗</button>
+      <button id="view" class="primary" data-i18n="p.openSite">Abrir el sitio ↗</button>
     </div>
 
     <details>
       <summary class="muted" data-i18n="p.settings">Ajustes</summary>
-      <label><span data-i18n="p.delay">Segundos entre pedidos </span><input id="delay" type="number" min="2" max="120" value="6" /></label>
-      <label><span data-i18n="p.max">Seguidores a revisar (0 = todos) </span><input id="max" type="number" min="0" value="0" /></label>
-      <p class="muted" data-i18n="p.settingsNote">
-        Más lento es más seguro. Instagram limita qué tan rápido navega una cuenta; si frena, el crawl espera y
-        sigue solo. Dejá una pestaña de instagram.com abierta (se abre una por vos).
-      </p>
       <div class="row"><button id="reset" data-i18n="p.reset">Borrar los datos juntados</button></div>
     </details>
 

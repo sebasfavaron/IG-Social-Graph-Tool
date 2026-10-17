@@ -2,6 +2,10 @@
 // the page can read the local crawl and photos and ask the crawler for things.
 
 export const hasBridge = () => !!globalThis.document?.documentElement.dataset.igsgBridge;
+// 1: the first bridges (extension 2.3.x), which pass on a fixed list of requests
+export const bridgeVersion = () => Number(globalThis.document?.documentElement.dataset.igsgBridge) || 0;
+// the extension's version (bridge 2 on), or null
+export const extensionVersion = () => globalThis.document?.documentElement.dataset.igsgVersion || null;
 
 let next = 0;
 // -> the answer's data; rejects with the extension's error, or after 15 s without one
