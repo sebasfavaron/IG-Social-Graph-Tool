@@ -1,6 +1,6 @@
 import { SHARE_BASE_URL } from './lib/share.js';
 import { identityParams, takeIdentity } from './lib/store.js';
-import { lang, langButton, t, translateStatic } from './lib/i18n.js';
+import { lang, langButton, t, translateStatic, why } from './lib/i18n.js';
 import { formatDuration } from './lib/format.js';
 
 const $ = (id) => document.getElementById(id);
@@ -56,7 +56,7 @@ function render(s) {
   $('profiles').textContent = s?.profiles ? t('p.refreshProfiles') : t('p.getProfiles');
   $('view').disabled = !has || s.links === 0;
   $('error').hidden = !s?.error || s.status === 'running';
-  $('error').textContent = s?.error || '';
+  $('error').textContent = why(s?.error || '');
   $('error').style.color = s?.status === 'cooldown' ? 'var(--muted)' : '';
   if (!has) {
     $('bar').style.width = '0';
@@ -91,7 +91,7 @@ async function act(fn) {
     render(await fn());
   } catch (err) {
     $('error').hidden = false;
-    $('error').textContent = err.message;
+    $('error').textContent = why(err.message);
   }
 }
 

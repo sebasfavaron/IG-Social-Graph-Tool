@@ -73,6 +73,13 @@ const STRINGS = {
     pickerPeople: (n) => `${n} personas`,
     pickerUnshared: 'sin compartir',
     cancel: 'Cancelar',
+    'e.cooldown': (min) => `Instagram pidió ir más despacio. Sigue solo en ${min} min.`,
+    'e.loggedOut': 'Instagram dice que no iniciaste sesión. Entrá a instagram.com y después tocá «Seguir».',
+    'e.checkpoint': 'Instagram quiere confirmar que sos vos. Abrí instagram.com, completá la verificación y después tocá «Seguir».',
+    'e.noLogin': 'No iniciaste sesión en instagram.com en este navegador.',
+    'e.noUsername': 'Iniciaste sesión, pero no se pudo leer tu usuario. Recargá instagram.com y probá de nuevo.',
+    'e.nothingToResume': 'No hay nada para seguir.',
+    'e.nothingToRefresh': 'No hay nada para actualizar.',
     'e.otherBrowser': 'este grafo se publicó desde otro navegador y solo ese puede reemplazarlo. Abrí el sitio con el botón de la extensión que lo publicó, o con tu link privado',
     'e.notYours': 'solo el navegador que publicó este grafo puede despublicarlo',
     'e.tooOften': 'hubo demasiadas publicaciones en la última hora, probá más tarde',
@@ -216,6 +223,13 @@ const STRINGS = {
     pickerPeople: (n) => `${n} people`,
     pickerUnshared: 'not shared',
     cancel: 'Cancel',
+    'e.cooldown': (min) => `Instagram asked us to slow down. Resuming automatically in ${min} min.`,
+    'e.loggedOut': 'Instagram says you are logged out. Log in on instagram.com, then Resume.',
+    'e.checkpoint': 'Instagram wants you to confirm it is you. Open instagram.com, complete the check, then Resume.',
+    'e.noLogin': 'Not logged in to instagram.com in this browser.',
+    'e.noUsername': "Logged in, but your username couldn't be read. Reload instagram.com and try again.",
+    'e.nothingToResume': 'Nothing to resume.',
+    'e.nothingToRefresh': 'Nothing to refresh.',
     'e.otherBrowser': 'this graph was published from another browser, and only that one can replace it. Open the site with the button of the extension that published it, or with your private link',
     'e.notYours': 'only the browser that published this graph can unpublish it',
     'e.tooOften': 'too many publishes in the last hour, try again later',
@@ -693,11 +707,22 @@ const ERRORS = [
   [/storage is full/, 'e.full'],
   [/too big/, 'e.tooBig'],
   [/too many people/, 'e.tooMany'],
-  [/extension did not answer/, 'e.noExtension'],
+  [/extension did not answer|No response from the extension/, 'e.noExtension'],
+  // the crawler's (background.js)
+  [/slow down\. Resuming automatically in (\d+) min/, 'e.cooldown'],
+  [/says you are logged out/, 'e.loggedOut'],
+  [/confirm it is you/, 'e.checkpoint'],
+  [/Not logged in to instagram/, 'e.noLogin'],
+  [/could not read your username/, 'e.noUsername'],
+  [/Nothing to resume/, 'e.nothingToResume'],
+  [/Nothing to refresh/, 'e.nothingToRefresh'],
 ];
 export function why(message) {
-  const known = ERRORS.find(([pattern]) => pattern.test(message || ''));
-  return known ? t(known[1]) : message;
+  for (const [pattern, key] of ERRORS) {
+    const m = pattern.exec(message || '');
+    if (m) return t(key, ...m.slice(1));
+  }
+  return message;
 }
 
 export function setLang(next) {
