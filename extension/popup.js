@@ -1,4 +1,5 @@
 import { SHARE_BASE_URL } from './lib/share.js';
+import { identityParams, takeIdentity } from './lib/store.js';
 import { lang, langButton, t, translateStatic } from './lib/i18n.js';
 import { formatDuration } from './lib/format.js';
 
@@ -113,7 +114,24 @@ $('guide').onclick = (e) => {
 // Viewing, publishing and the network all live on the site, which reads this crawl
 // through the extension's bridge (bridge.js): new features ship with the site, and the
 // extension only needs updating when the crawler itself changes.
-$('view').onclick = () => chrome.tabs.create({ url: SHARE_BASE_URL });
+// Graphs published before that were published from the extension's own page, whose key
+// is kept here (this origin's localStorage); the link hands it to the site, which keeps it.
+function identityHash() {
+  let params = identityParams();
+  if (!params) {
+    // published before the browser remembered whose it was: the one key there is
+    try {
+      const keys = Object.keys(localStorage).filter((k) => k.startsWith('ownerKey:'));
+      if (keys.length === 1) {
+        const owner = keys[0].slice('ownerKey:'.length);
+        takeIdentity(`#me=${owner}&mk=${localStorage.getItem(keys[0])}`);
+        params = identityParams();
+      }
+    } catch (_) {}
+  }
+  return params ? `#${params.slice(1)}` : '';
+}
+$('view').onclick = () => chrome.tabs.create({ url: SHARE_BASE_URL + identityHash() });
 
 chrome.storage.onChanged.addListener(() => act(() => send('getState')));
 chrome.cookies.onChanged.addListener(({ cookie }) => {
