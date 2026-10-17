@@ -55,7 +55,7 @@ function render(s) {
   $('profiles').hidden = !has || s.status !== 'done' || s.profiles === undefined;
   $('profiles').textContent = s?.profiles ? t('p.refreshProfiles') : t('p.getProfiles');
   $('view').disabled = !has || s.links === 0;
-  $('error').hidden = !s?.error || s.status === 'running';
+  $('error').hidden = !s?.error || s.status === 'running' || s.status === 'cooldown'; // the status line says it
   $('error').textContent = why(s?.error || '');
   $('error').style.color = s?.status === 'cooldown' ? 'var(--muted)' : '';
   if (!has) {

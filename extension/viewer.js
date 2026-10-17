@@ -41,6 +41,9 @@ async function readLocal() {
 
 
 let shown = null; // what is on screen, for the share link
+// the extension's account while its crawl is still going (as read when the page opened):
+// what is on screen is part of it, and publishing it would replace the whole one
+let crawling = null;
 let encoded = null; // `shown` packed for the link; filled in the background
 let viewTouched = false; // the view goes in the link only once someone zoomed or panned
 // Names, photos and flags from the crawl (extension only: share links carry usernames).
@@ -1244,11 +1247,18 @@ function updateShareButton() {
   $('unpublish').hidden = !shown || !single || !publishedHere(single);
   const publishes = unpublished().length > 0;
   const button = $('share');
+  const waits = unpublished().some(([o]) => o === crawling);
+  const [title, wide, narrow] = waits
+    ? ['crawlingTitle', 'crawlingWide', 'crawlingNarrow']
+    : publishes
+      ? ['shareTitle', 'shareWide', 'shareNarrow']
+      : ['copyTitle', 'copyWide', 'copyNarrow'];
+  button.disabled = waits;
   button.classList.toggle('publishes', publishes);
-  button.title = t(publishes ? 'shareTitle' : 'copyTitle');
+  button.title = t(title);
   button.replaceChildren(
-    Object.assign(document.createElement('span'), { className: 'wide-only', textContent: t(publishes ? 'shareWide' : 'copyWide') }),
-    Object.assign(document.createElement('span'), { className: 'narrow-only', textContent: t(publishes ? 'shareNarrow' : 'copyNarrow') })
+    Object.assign(document.createElement('span'), { className: 'wide-only', textContent: t(wide) }),
+    Object.assign(document.createElement('span'), { className: 'narrow-only', textContent: t(narrow) })
   );
 }
 let shareFlash = null;
@@ -1463,6 +1473,7 @@ $('invite').hidden = hasLocal; // the site's corner: map your own (unless the ex
 renderEmptyText();
 const local = hasLocal ? await readLocal() : {};
 if (hasLocal) {
+  if (local.crawl && local.crawl.status !== 'done') crawling = local.crawl.viewer?.username ?? null;
   profiles = ownProfiles = local.crawl?.profiles || {};
   photos = ownPhotos = photosFromThumbs(local.thumbs);
   // photos keep arriving while the crawl runs
