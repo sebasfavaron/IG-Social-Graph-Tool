@@ -213,6 +213,20 @@ export async function loadGraph(owner, { fetchImpl = fetch } = {}) {
   return rows[0]?.[0] ?? null;
 }
 
+// The owner's friend-group names ({ anchor username: name }, groupNames.js), when the
+// graph is in this browser's network -> {} when there are none, null when out of reach.
+export async function loadGroupNames(owner, { fetchImpl = fetch } = {}) {
+  const rows = await sharesQuery('select get_group_names($1, $2, $3)', [owner, ...viewerParams()], fetchImpl);
+  const names = rows[0]?.[0];
+  return names && typeof names === 'object' ? names : null;
+}
+// Names the owner's groups, from the browser that published the graph.
+export async function saveGroupNames(owner, names, { fetchImpl = fetch } = {}) {
+  const key = readOwnerKey(owner);
+  if (!key) throw new Error('only the browser that published this graph can name its groups');
+  await sharesQuery('select set_group_names($1, $2, $3::jsonb)', [owner, key, JSON.stringify(names)], fetchImpl);
+}
+
 // What anyone may see of a published graph, to be invited in:
 // -> { owner, people, name, photo, graphs (published in all) } or null if never published
 export async function teaser(owner, { fetchImpl = fetch } = {}) {

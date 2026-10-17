@@ -30,6 +30,9 @@ alter table graphs add column if not exists people integer;
 -- Once set, only that key replaces or unpublishes the graph. Null: published before keys,
 -- and the next publish with a key claims it.
 alter table graphs add column if not exists key_hash text;
+-- the friend groups' names, as the owner named them: { anchor username: name } (see the
+-- client's lib/groupNames.js). Republishing keeps them; unpublishing drops them.
+alter table graphs add column if not exists group_names jsonb not null default '{}';
 -- everyone in each graph (save_graph's members): what links graphs into a network, and
 -- what unpublishing checks before dropping someone's name and photo
 create table if not exists graph_people (
@@ -271,6 +274,38 @@ language sql stable security definer set search_path = public, pg_temp as $$
   where g.owner = owner_name
 $$;
 
+-- The owner names their friend groups, with the key of the browser that published the
+-- graph. names: { anchor username: name }, at most 50, each name at most 30 characters.
+create or replace function set_group_names(owner_name text, owner_key text, names jsonb)
+returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  stored_hash text := (select g.key_hash from graphs g where g.owner = owner_name);
+begin
+  if stored_hash is null or stored_hash is distinct from key_hash(owner_key) then
+    raise exception 'only the browser that published this graph can name its groups';
+  end if;
+  if names is null or jsonb_typeof(names) <> 'object' then
+    raise exception 'group names must be an object';
+  end if;
+  if (select count(*) from jsonb_each(names)) > 50 or exists (
+    select from jsonb_each(names) e
+    where e.key !~ '^[A-Za-z0-9._]{1,30}$' or jsonb_typeof(e.value) <> 'string' or length(e.value #>> '{}') > 30
+  ) then
+    raise exception 'group names too long or too many';
+  end if;
+  update graphs set group_names = names where owner = owner_name;
+end $$;
+
+-- An owner's group names, when the graph is in the viewer's network; otherwise null.
+create or replace function get_group_names(owner_name text, viewer text, viewer_key text)
+returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select g.group_names from graphs g
+  join network(viewer, viewer_key) n on n.owner = g.owner
+  where g.owner = owner_name
+$$;
+
 -- Names, flags and photos (base64) of up to 1000 accounts, for those in a graph of the
 -- viewer's network (see the conditions below).
 drop function if exists get_people(text[]);
@@ -308,6 +343,8 @@ revoke all on function list_graphs(text, text) from public;
 revoke all on function save_people(jsonb, boolean, text, text) from public;
 revoke all on function get_graph(text, text, text) from public;
 revoke all on function get_people(text[], text, text) from public;
+revoke all on function set_group_names(text, text, jsonb) from public;
+revoke all on function get_group_names(text, text, text) from public;
 grant execute on function save_graph(text, text, boolean, text, integer, text, jsonb) to share_client;
 grant execute on function unpublish(text, text) to share_client;
 grant execute on function list_graphs(text, text) to share_client;
@@ -315,3 +352,5 @@ grant execute on function graph_teaser(text) to share_client;
 grant execute on function save_people(jsonb, boolean, text, text) to share_client;
 grant execute on function get_graph(text, text, text) to share_client;
 grant execute on function get_people(text[], text, text) to share_client;
+grant execute on function set_group_names(text, text, jsonb) to share_client;
+grant execute on function get_group_names(text, text, text) to share_client;

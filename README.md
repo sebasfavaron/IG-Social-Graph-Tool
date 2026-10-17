@@ -20,7 +20,7 @@ Requests go from an instagram.com tab with your own session, and the data stays 
 
 ### Reading the graph
 
-- **Friend groups** are found from who-follows-whom alone and coloured. You are left out of the grouping, since you connect to everyone. The key in the corner lists them: point at a group to highlight its people and the lines between them, click its name to rename it. Names travel in the share link.
+- **Friend groups** are found from who-follows-whom alone and coloured. You are left out of the grouping, since you connect to everyone. The key in the corner lists them: point at a group to highlight its people and the lines between them, and on your own graph the pencil renames it. The names are saved with your graph in the database, so your network sees them wherever they open it.
 - **Dot size** follows the number of connections, and dots shrink as you zoom out so they never pile up. Names never overlap: the most connected people are labelled first.
 - **Photos** take the place of the dots once you zoom in far enough to tell faces apart; the friend-group colour stays as a ring.
 - **Search** finds people by username or real name, accents ignored ("jose" finds José).
@@ -35,7 +35,7 @@ Requests go from an instagram.com tab with your own session, and the data stays 
 
 ### Share links
 
-**Publish & copy link** ("Publicar y copiar link") first shows what goes public and asks; then it puts your crawl in a small shared database ([Neon](https://neon.com) Postgres), with everyone's real name and photo, and copies a link that is just your username plus what you are looking at: `#o=sebas.favaron&p=ana&n=school,work`. Who is selected, the zoom and your friend-group names ride in the link; the graph, names and photos come from the database. Once everything on screen is public, the button just says **Copy link** and uploads nothing.
+**Publish & copy link** ("Publicar y copiar link") first shows what goes public and asks; then it puts your crawl in a small shared database ([Neon](https://neon.com) Postgres), with everyone's real name and photo, and copies a link that is just your username plus what you are looking at: `#o=sebas.favaron&p=ana`. Who is selected and the zoom ride in the link; the graph, names, photos and friend-group names come from the database. Once everything on screen is public, the button just says **Copy link** and uploads nothing.
 
 The database keeps one graph per person and one row per Instagram account. Someone who is in two friends' graphs is stored once, and sharing again replaces your graph instead of adding a copy (sharing twice without changes uploads nothing). The link always opens your latest share.
 
@@ -78,7 +78,7 @@ Every link to the site shows the same preview card in chats ([`extension/og.png`
 - **Keep an instagram.com tab open.** The extension opens one in the background if there is none, and marks it so Memory Saver does not discard it.
 - **Followers to check** (Settings) caps the second phase, handy for a quick first look. Raise it later and Resume to continue.
 - **"You follow" only counts people who follow at least one of your followers**: Instagram's "followed by" lists, the only place the crawl learns whom you follow, name no one else.
-- **Group names in the extension** are saved per account in that browser, each with its group's most connected person, so a later crawl that renumbers the groups keeps every name on its group.
+- **Group names** are saved with the graph in the database (`set_group_names`, only from the browser that published it), each with its group's most connected person, so a later crawl that renumbers the groups keeps every name on its group. Before publishing they wait in that browser and go up with the graph. Old links' `n=` still shows its names.
 - **Photos** are saved as small copies when the crawl runs, because Instagram's photo links expire. If one fails, **Refresh names & photos** tries again with fresh links.
 
 ### Develop

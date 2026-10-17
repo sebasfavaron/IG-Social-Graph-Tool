@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { adoptIdentity, listGraphs, loadGraph, loadPeople, me, publishedHere, saveGraph, teaser, unpublishGraph } from '../extension/lib/store.js';
+import { adoptIdentity, listGraphs, loadGraph, loadGroupNames, loadPeople, me, publishedHere, saveGraph, saveGroupNames, teaser, unpublishGraph } from '../extension/lib/store.js';
 import { buildHash, parseHash } from '../extension/lib/share.js';
 import { mergeGraphs, ownGraph } from '../extension/lib/merge.js';
 
@@ -15,6 +15,7 @@ function fakeNeon() {
   const shareDates = new Map([['old', 1], ['newer', 50]]); // old share id -> when it was made
   let clock = 10;
   const people = new Map();
+  const groupNames = new Map(); // owner -> { anchor: name }
   const calls = [];
   const fetchImpl = async (url, init) => {
     const { query, params } = JSON.parse(init.body);
@@ -58,6 +59,14 @@ function fakeNeon() {
         return [o, new Date(dates.get(o) * 1000).toISOString(), counts.get(o), p?.n || null, p?.p || null, p?.t || null];
       }));
     }
+    if (query === 'select set_group_names($1, $2, $3::jsonb)') {
+      const [owner, key, names] = params;
+      if (!keys.has(owner) || keys.get(owner) !== key)
+        return new Response(JSON.stringify({ message: 'only the browser that published this graph can name its groups' }), { status: 400 });
+      groupNames.set(owner, JSON.parse(names));
+      return ok([[null]]);
+    }
+    if (query === 'select get_group_names($1, $2, $3)') return ok([[graphs.has(params[0]) ? groupNames.get(params[0]) || {} : null]]);
     if (query === 'select data from get_graph($1, $2, $3)') return ok(graphs.has(params[0]) ? [[graphs.get(params[0])]] : []);
     if (query.includes('from graph_teaser($1)')) {
       const o = params[0];
@@ -229,6 +238,24 @@ test('publishing makes this browser a viewer; the site adopts that from a link',
     // unpublishing ends it
     await unpublishGraph('me', neon);
     assert.equal(me(), null);
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
+test('group names live with the graph: its publisher names them, the network reads them', async () => {
+  const kept = new Map();
+  globalThis.localStorage = { getItem: (k) => kept.get(k) ?? null, setItem: (k, v) => kept.set(k, String(v)), removeItem: (k) => kept.delete(k) };
+  try {
+    const neon = fakeNeon();
+    const opts = { fetchImpl: neon.fetchImpl };
+    await saveGraph({ owner: 'namer', g: 'G', ids: new Set(['namer', 'ana']) }, opts);
+    assert.deepEqual(await loadGroupNames('namer', opts), {});
+    await saveGroupNames('namer', { ana: 'Escuela' }, opts);
+    assert.deepEqual(await loadGroupNames('namer', opts), { ana: 'Escuela' });
+    // a browser without its key cannot
+    await assert.rejects(saveGroupNames('someone_else', { ana: 'x' }, opts), /only the browser that published/);
+    assert.equal(await loadGroupNames('never_published', opts), null);
   } finally {
     delete globalThis.localStorage;
   }

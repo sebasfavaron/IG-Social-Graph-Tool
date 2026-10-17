@@ -83,6 +83,7 @@ const STRINGS = {
     'e.nothingToRefresh': 'No hay nada para actualizar.',
     'e.otherBrowser': 'este grafo se publicó desde otro navegador y solo ese puede reemplazarlo. Abrí el sitio con el botón de la extensión que lo publicó, o con tu link privado',
     'e.notYours': 'solo el navegador que publicó este grafo puede despublicarlo',
+    'e.notYourGroups': 'solo el navegador que publicó este grafo puede nombrar sus grupos',
     'e.tooOften': 'hubo demasiadas publicaciones en la última hora, probá más tarde',
     'e.full': 'el espacio para grafos compartidos está lleno',
     'e.tooBig': 'el grafo es demasiado grande (2 MB como máximo)',
@@ -158,6 +159,7 @@ const STRINGS = {
     uploading: 'Subiendo…',
     linkCopied: 'Link copiado',
     couldNotShare: (msg) => `No se pudo compartir: ${msg}.`,
+    couldNotNameGroups: (msg) => `No se pudieron guardar los nombres de los grupos: ${msg}.`,
     copyThisLink: 'Copiá este link:',
   },
   en: {
@@ -234,6 +236,7 @@ const STRINGS = {
     'e.nothingToRefresh': 'Nothing to refresh.',
     'e.otherBrowser': 'this graph was published from another browser, and only that one can replace it. Open the site with the button of the extension that published it, or with your private link',
     'e.notYours': 'only the browser that published this graph can unpublish it',
+    'e.notYourGroups': 'only the browser that published this graph can name its groups',
     'e.tooOften': 'too many publishes in the last hour, try again later',
     'e.full': 'the space for shared graphs is full',
     'e.tooBig': 'the graph is too big (2 MB at most)',
@@ -309,6 +312,7 @@ const STRINGS = {
     uploading: 'Uploading…',
     linkCopied: 'Link copied',
     couldNotShare: (msg) => `Could not share: ${msg}.`,
+    couldNotNameGroups: (msg) => `Could not save the group names: ${msg}.`,
     copyThisLink: 'Copy this link:',
   },
 };
@@ -718,6 +722,7 @@ export function t(key, ...args) {
 // The database and the extension answer in English; the known answers, in the page's language
 const ERRORS = [
   [/published from another browser/, 'e.otherBrowser'],
+  [/only the browser that published this graph can name/, 'e.notYourGroups'],
   [/only the browser that published/, 'e.notYours'],
   [/too many shares/, 'e.tooOften'],
   [/storage is full/, 'e.full'],

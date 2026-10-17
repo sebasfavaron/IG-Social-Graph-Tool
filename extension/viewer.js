@@ -8,11 +8,13 @@ import {
   identityParams,
   listGraphs,
   loadGraph,
+  loadGroupNames as fetchGroupNames,
   loadPeople,
   loadPhotos,
   me,
   publishedHere,
   saveGraph,
+  saveGroupNames,
   takeIdentity,
   teaser,
   unpublishGraph,
@@ -118,7 +120,9 @@ async function show(graph, { encodedGraph = null, crawls = null, stored = [] } =
     : null;
   shown = graphControl ? { ...full, username, partners } : null;
   groupAnchorIds = combined ? [] : groupAnchors(groups.groupOf, full.links, groups.sizes.length);
-  groupNames = combined ? [] : loadGroupNames();
+  // someone else's graph: the owner's names, from the database (not this browser's old ones)
+  groupNames = combined || !canRename() ? [] : loadGroupNames();
+  if (!combined) readStoredNames(username);
   heldGroup = null;
   renderGroups();
   $('share').hidden = !shown;
@@ -204,7 +208,6 @@ function viewState() {
     p: graphControl?.selected(),
     c: pinned,
     v: viewTouched && graphControl ? graphControl.view() : null,
-    n: shown?.partners.length ? null : groupNames,
     m: shown?.partners,
   };
 }
@@ -580,12 +583,14 @@ function panelInsets() {
   return { right: 0, bottom: shown || (document.body.classList.contains('sheet-folded') ? 90 : Math.round(innerHeight * 0.4)) };
 }
 
-// ---- friend groups key: renameable, names saved in the link ------------------------
+// ---- friend groups key: named by the graph's owner, names in the database ---------------
 let groups = { groupOf: new Map(), sizes: [] };
-let groupNames = []; // per group index, as shown and as put in the link
+let groupNames = []; // per group index, as shown
 let groupAnchorIds = []; // each group's most connected person, see groupNames.js
 // Saved per account as { anchor username: name }, so a later crawl that renumbers the
-// groups keeps each name on its group. Before that they were saved by number.
+// groups keeps each name on its group. The database holds the owner's (set_group_names);
+// this browser keeps a copy for a crawl not yet published, sent along when it is. Before
+// that they were saved by number, and before the database, also in the link (#n=).
 const namesKey = () => `groupNamesByAnchor:${shown?.username || ''}`;
 const oldNamesKey = () => `groupNames:${shown?.username || ''}`;
 
@@ -607,12 +612,46 @@ function readSavedNames() {
 function loadGroupNames() {
   return namesFor(readSavedNames(), groups.groupOf, groupAnchorIds);
 }
-function saveGroupName(i, name) {
-  groupNames[i] = name;
+function writeSavedNames(saved) {
   try {
-    localStorage.setItem(namesKey(), JSON.stringify(rename(readSavedNames(), groups.groupOf, groupAnchorIds, i, name)));
+    localStorage.setItem(namesKey(), JSON.stringify(saved));
   } catch (_) {}
-  syncUrl();
+}
+// only the owner names their groups: the browser that published the graph, or the one
+// with the crawl (until it is published from another)
+const canRename = () => !!shown && !shown.partners.length && (publishedHere(shown.username) || (hasLocal && ownCrawlOwner === shown.username));
+let ownCrawlOwner = null; // the extension's crawl's account, on this browser
+// The database's names for this owner, once they come; the owner's browser sends its own
+// copy up the first time (names given before the database had them).
+async function readStoredNames(owner) {
+  if (!me()) return;
+  const stored = await fetchGroupNames(owner).catch(() => null);
+  if (!stored || shown?.username !== owner || shown.partners.length) return;
+  const local = readSavedNames();
+  if (!Object.keys(stored).length && Object.keys(local).length) {
+    if (publishedHere(owner)) pushNames(owner, local);
+    return;
+  }
+  if (!Object.keys(stored).length) return;
+  if (canRename()) writeSavedNames(stored);
+  groupNames = namesFor(stored, groups.groupOf, groupAnchorIds);
+  renderGroups();
+}
+// to the database, a moment after the typing stops
+let namesTimer = null;
+function pushNames(owner, saved) {
+  clearTimeout(namesTimer);
+  if (!publishedHere(owner)) return;
+  namesTimer = setTimeout(() => {
+    saveGroupNames(owner, saved).catch((err) => ($('announce').textContent = t('couldNotNameGroups', why(err.message))));
+  }, 800);
+}
+function saveGroupName(i, name) {
+  if (!canRename()) return;
+  groupNames[i] = name;
+  const saved = rename(readSavedNames(), groups.groupOf, groupAnchorIds, i, name);
+  writeSavedNames(saved);
+  pushNames(shown.username, saved);
 }
 
 // People combined: the key shows circles instead of friend groups, the people in more
@@ -748,7 +787,7 @@ function renderGroups() {
         input.select();
         pointAt(i);
       };
-      li.append(input, rename);
+      if (canRename()) li.append(input, rename);
       return li;
     })
   );
@@ -1330,6 +1369,10 @@ async function share() {
           photos,
         });
         storedOwners.add(owner);
+        if (owner === shown.username && !shown.partners.length) {
+          const saved = readSavedNames();
+          if (Object.keys(saved).length) await saveGroupNames(owner, saved).catch(() => {});
+        }
       }
       shared = null; // publishing opens the network: read the list again
       syncUrl(); // on the site the address bar becomes the short link too
@@ -1479,6 +1522,7 @@ const local = hasLocal ? await readLocal() : {};
 if (bridged) startCrawlPanel();
 if (hasLocal) {
   if (local.crawl && local.crawl.status !== 'done') crawling = local.crawl.viewer?.username ?? null;
+  ownCrawlOwner = local.crawl?.viewer?.username ?? null;
   profiles = ownProfiles = local.crawl?.profiles || {};
   photos = ownPhotos = photosFromThumbs(local.thumbs);
   // photos keep arriving while the crawl runs
