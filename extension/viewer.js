@@ -5,6 +5,7 @@ import { friendGroups } from './lib/groups.js';
 import { MAX_GROUP_NAME, SHARE_BASE_URL, buildHash, decodeGraph, encodeGraph, parseHash } from './lib/share.js';
 import { downloadShare, photosFromThumbs, unpackShare, unseal } from './lib/vault.js';
 import {
+  adoptIdentity,
   identityParams,
   listGraphs,
   loadGraph,
@@ -12,6 +13,7 @@ import {
   loadPeople,
   loadPhotos,
   me,
+  publishedAsIs,
   publishedHere,
   saveGraph,
   saveGroupNames,
@@ -21,7 +23,7 @@ import {
 } from './lib/store.js';
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { lang, setLang, t, translateStatic, why } from './lib/i18n.js';
-import { ask, hasBridge, onLocalChange } from './lib/bridge.js';
+import { ask, bridgeVersion, hasBridge, onLocalChange } from './lib/bridge.js';
 import { paint as paintCrawlPanel, showCrawlPanel, startCrawlPanel } from './lib/crawlPanel.js';
 import { drawHero } from './lib/hero.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
@@ -44,9 +46,17 @@ async function readLocal() {
 
 
 let shown = null; // what is on screen, for the share link
-// the extension's account while its crawl is still going (as read when the page opened):
-// what is on screen is part of it, and publishing it would replace the whole one
+// the extension's account while its crawl is going (running or waiting on Instagram), or
+// once it stopped while this page was open (crawlStale): what is on screen is part of it,
+// or older than it, and publishing it would replace the whole one. A crawl paused or
+// stopped on an error before the page opened can be published as it is.
 let crawling = null;
+let crawlStale = false;
+function crawlState(s, stoppedHere) {
+  crawlStale = stoppedHere;
+  crawling = s && (stoppedHere || ['running', 'cooldown'].includes(s.status)) ? s.viewer?.username ?? null : null;
+  updateShareButton();
+}
 let encoded = null; // `shown` packed for the link; filled in the background
 let viewTouched = false; // the view goes in the link only once someone zoomed or panned
 // Names, photos and flags from the crawl (extension only: share links carry usernames).
@@ -584,17 +594,30 @@ function panelInsets() {
 }
 
 // The extension's crawl, as the site first shows it, is not known to be published; when
-// the database holds exactly this graph (republished from this browser or any other), the
-// button only copies the link instead of offering to publish again.
+// the database holds exactly this graph and this browser sent it with the same names and
+// photos, the button only copies the link instead of offering to publish again. New names
+// or photos (a refresh, late downloads) keep "Publish", which sends them.
 async function markIfPublished(owner) {
   const crawl = parts.get(owner);
   if (!crawl || !me() || crawling === owner || storedOwners.has(owner)) return;
   // packed as publishing packs it (share())
   const [stored, mine] = await Promise.all([loadGraph(owner).catch(() => null), encodeGraph(crawl)]);
   if (!stored || stored !== mine || parts.get(owner) !== crawl) return;
+  if (!(await publishedAsIs({ owner, g: mine, ids: new Set(crawl.nodes.map((n) => n.id)), profiles, photos }))) return;
+  if (parts.get(owner) !== crawl) return;
   storedOwners.add(owner);
   updateShareButton();
   syncUrl();
+}
+
+async function adoptLegacyKey() {
+  const legacy = await ask('legacyKey').catch(() => null);
+  if (!legacy?.key) return;
+  try {
+    if (localStorage.getItem('legacyKeySeen') === legacy.key) return; // sorted out already
+    await adoptIdentity(legacy.owner, legacy.key);
+    localStorage.setItem('legacyKeySeen', legacy.key);
+  } catch (_) {}
 }
 
 // ---- friend groups key: named by the graph's owner, names in the database ---------------
@@ -635,35 +658,62 @@ function writeSavedNames(saved) {
 // with the crawl (until it is published from another)
 const canRename = () => !!shown && !shown.partners.length && (publishedHere(shown.username) || (hasLocal && ownCrawlOwner === shown.username));
 let ownCrawlOwner = null; // the extension's crawl's account, on this browser
-// The database's names for this owner, once they come; the owner's browser sends its own
-// copy up the first time (names given before the database had them).
+// Renames this browser made that the database does not have yet (offline, the tab closed
+// before they went up): they go up next time instead of being overwritten.
+const dirtyKey = (owner) => `groupNamesDirty:${owner}`;
+// Whether this browser has read the database's names for the owner once: before that, its
+// own (from before the database held names) go up if the database has none.
+const syncedKey = (owner) => `groupNamesSynced:${owner}`;
+const flag = (key, on) => {
+  try {
+    if (on === undefined) return localStorage.getItem(key) === '1';
+    if (on) localStorage.setItem(key, '1');
+    else localStorage.removeItem(key);
+  } catch (_) {}
+  return false;
+};
+let namesReachable = false; // the database answered for the graph on screen (it is published)
+// The database's names for this owner, once they come.
 async function readStoredNames(owner) {
+  namesReachable = false;
   if (!me()) return;
   const stored = await fetchGroupNames(owner).catch(() => null);
   if (!stored || shown?.username !== owner || shown.partners.length) return;
+  namesReachable = true;
   const local = readSavedNames();
-  if (!Object.keys(stored).length && Object.keys(local).length) {
-    if (publishedHere(owner)) pushNames(owner, local);
-    return;
+  const mine = canRename();
+  const sendLocal = mine && Object.keys(local).length && (flag(dirtyKey(owner)) || (!flag(syncedKey(owner)) && !Object.keys(stored).length));
+  if (sendLocal) return pushNames(owner, local, 0);
+  if (mine) {
+    writeSavedNames(stored);
+    flag(syncedKey(owner), true);
   }
-  if (!Object.keys(stored).length) return;
-  if (canRename()) writeSavedNames(stored);
   groupNames = namesFor(stored, groups.groupOf, groupAnchorIds);
   renderGroups();
 }
-// to the database, a moment after the typing stops
+// to the database, a moment after the typing stops; a graph not published (or unpublished)
+// keeps them here until it is
 let namesTimer = null;
-function pushNames(owner, saved) {
+function pushNames(owner, saved, wait = 800) {
   clearTimeout(namesTimer);
-  if (!publishedHere(owner)) return;
+  flag(dirtyKey(owner), true);
+  if (!namesReachable || !publishedHere(owner)) return;
   namesTimer = setTimeout(() => {
-    saveGroupNames(owner, saved).catch((err) => ($('announce').textContent = t('couldNotNameGroups', why(err.message))));
-  }, 800);
+    saveGroupNames(owner, saved)
+      .then(() => {
+        flag(dirtyKey(owner), false);
+        flag(syncedKey(owner), true);
+      })
+      .catch((err) => ($('announce').textContent = t('couldNotNameGroups', why(err.message))));
+  }, wait);
 }
 function saveGroupName(i, name) {
   if (!canRename()) return;
   groupNames[i] = name;
-  const saved = rename(readSavedNames(), groups.groupOf, groupAnchorIds, i, name);
+  // names of people no longer in the graph go: they could not land on a group anyway
+  const saved = Object.fromEntries(
+    Object.entries(rename(readSavedNames(), groups.groupOf, groupAnchorIds, i, name)).filter(([id]) => groups.groupOf.has(id))
+  );
   writeSavedNames(saved);
   pushNames(shown.username, saved);
 }
@@ -1275,10 +1325,10 @@ async function openShareHash() {
 let navigating = false;
 function onNavigate() {
   // a private link pasted into an open tab only changes the hash: take it, and start over
-  const cleaned = takeIdentity(location.hash);
-  if (cleaned !== null) {
-    history.replaceState(null, '', location.pathname + location.search + cleaned);
-    return location.reload();
+  const taken = takeIdentity(location.hash);
+  if (taken) {
+    history.replaceState(null, '', location.pathname + location.search + taken.rest);
+    return void taken.adopted.then(() => location.reload());
   }
   // back to the site's bare address: its home, the list, as on a first visit
   if (!location.hash && !inExtension) return location.reload();
@@ -1310,7 +1360,7 @@ function updateShareButton() {
   const [title, wide, narrow] = publishes ? ['shareTitle', 'shareWide', 'shareNarrow'] : ['copyTitle', 'copyWide', 'copyNarrow'];
   button.classList.toggle('waits', waits);
   button.classList.toggle('publishes', publishes);
-  button.title = t(waits ? 'crawlingTitle' : title);
+  button.title = t(waits ? (crawlStale ? 'crawlStaleTitle' : 'crawlingTitle') : title);
   button.replaceChildren(
     Object.assign(document.createElement('span'), { className: 'wide-only', textContent: t(wide) }),
     Object.assign(document.createElement('span'), { className: 'narrow-only', textContent: t(narrow) })
@@ -1356,6 +1406,7 @@ $('unpublish-go').onclick = async () => {
   // showing its own crawl, ready to publish again.
   if (!inExtension) return void (location.href = location.pathname);
   storedOwners.delete(owner);
+  namesReachable = false; // gone with the graph; renames wait for the next publish
   updateExplore();
   $('unpublish').hidden = true;
   $('announce').textContent = t('unpublished');
@@ -1385,9 +1436,11 @@ async function share() {
           photos,
         });
         storedOwners.add(owner);
+        // the names given before publishing go up with it
         if (owner === shown.username && !shown.partners.length) {
+          namesReachable = true;
           const saved = readSavedNames();
-          if (Object.keys(saved).length) await saveGroupNames(owner, saved).catch(() => {});
+          if (Object.keys(saved).length) pushNames(owner, saved, 0);
         }
       }
       shared = null; // publishing opens the network: read the list again
@@ -1530,14 +1583,25 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// A private link: out of the address bar first, and its key sorted out before anything
+// reads with it (store.js adoptIdentity)
+const taken = takeIdentity(location.hash);
+if (taken) {
+  history.replaceState(null, '', location.pathname + location.search + taken.rest);
+  await taken.adopted;
+}
+// A graph published from the extension's own page (before 2.3.0) has its key there; the
+// popup leaves it for the bridge, and it is adopted the same careful way.
+if (bridged && bridgeVersion() >= 2) await adoptLegacyKey();
+
 $('invite').href = INSTALL_URL;
 $('invite').hidden = hasLocal; // the site's corner: map your own (unless the extension is here)
 renderEmptyText();
 const local = hasLocal ? await readLocal() : {};
 // the crawl's controls: on the site, through the bridge (the popup only opens the site)
-if (bridged) startCrawlPanel();
+if (bridged) startCrawlPanel({ state: crawlState });
 if (hasLocal) {
-  if (local.crawl && local.crawl.status !== 'done') crawling = local.crawl.viewer?.username ?? null;
+  if (['running', 'cooldown'].includes(local.crawl?.status)) crawling = local.crawl.viewer?.username ?? null;
   ownCrawlOwner = local.crawl?.viewer?.username ?? null;
   profiles = ownProfiles = local.crawl?.profiles || {};
   photos = ownPhotos = photosFromThumbs(local.thumbs);
@@ -1552,11 +1616,21 @@ if (hasLocal) {
     if (selected) paintWho(selected);
   };
   if (inExtension) chrome.storage.onChanged.addListener((changes) => changes.thumbs && freshPhotos(changes.thumbs.newValue));
-  else onLocalChange(() => ask('crawl').then((fresh) => freshPhotos(fresh.thumbs)).catch(() => {}));
+  else {
+    // Photos arrive one by one during a crawl and every one is a change: read them again at
+    // most every 10 s, and only them (bridge 3); the whole crawl came along before.
+    let photosDue = null;
+    const readPhotos = () =>
+      (bridgeVersion() >= 3 ? ask('thumbs') : ask('crawl').then((fresh) => fresh.thumbs))
+        .then(freshPhotos)
+        .catch(() => {})
+        .finally(() => (photosDue = null));
+    onLocalChange((keys) => {
+      if (keys && !keys.includes('thumbs')) return;
+      photosDue ??= setTimeout(readPhotos, 10_000);
+    });
+  }
 }
-// a link from the extension: this browser is that publisher from now on
-const cleaned = takeIdentity(location.hash);
-if (cleaned !== null) history.replaceState(null, '', location.pathname + location.search + cleaned);
 if (!(await openShareHash())) {
   // your own crawl first, from the extension (on the site, through its bridge)
   if (local.crawl) {

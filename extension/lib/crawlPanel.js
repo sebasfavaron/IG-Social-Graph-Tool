@@ -12,9 +12,11 @@ const $ = (id) => document.getElementById(id);
 let last = null; // the crawler's summary as last drawn
 let env = null; // { loggedIn, pinned, version } from the extension; null: an old one that does not say
 let settingsTouched = false;
-let onDone = () => {};
+let onState = () => {};
 let drawn = false;
-let endedHere = false; // the crawl ended while this page was open: what is on screen is part of it
+// the crawl stopped (or ended) while this page was open: what is on screen is older than it
+let stoppedHere = false;
+export const going = (s) => s?.status === 'running' || s?.status === 'cooldown';
 let newerVersion = null; // the site's extension version, when newer than the installed one
 
 function settings() {
@@ -57,16 +59,16 @@ export function paint() {
   // crawls made before names and photos were kept have none
   $('crawl-profiles').hidden = !has || s.status !== 'done' || s.profiles === undefined;
   $('crawl-profiles').textContent = s?.profiles ? t('p.refreshProfiles') : t('p.getProfiles');
-  $('crawl-see').hidden = !(endedHere && s?.status === 'done');
+  $('crawl-see').hidden = !(stoppedHere && has && !going(s));
+  $('crawl-see').textContent = t(s?.status === 'done' ? 'c.see' : 'c.seeSoFar');
   $('crawl-update').hidden = !newerVersion;
 }
 
 function draw(s) {
   const done = s?.status === 'done';
-  if (drawn && last?.status !== 'done' && last && done) {
-    endedHere = true;
-    onDone();
-  }
+  if (drawn && going(last) && !going(s)) stoppedHere = true;
+  if (going(s)) stoppedHere = false;
+  onState(s, stoppedHere);
   // on opening, a finished crawl folds away to its first line; one going (or none) shows everything
   if (!drawn) setOpen(!done);
   drawn = true;
@@ -112,9 +114,10 @@ const newer = (a, b) => {
   return false;
 };
 
-// done(): the crawl just ended (the page can show the whole graph now)
-export async function startCrawlPanel({ done } = {}) {
-  onDone = done || onDone;
+// state(summary, stoppedHere): every time the crawl's state is read (the page decides
+// whether what it shows can be published)
+export async function startCrawlPanel({ state } = {}) {
+  onState = state || onState;
   $('crawl').hidden = false;
   $('crawl-toggle').onclick = () => setOpen($('crawl-more').hidden);
   $('crawl-delay').oninput = $('crawl-max').oninput = () => (settingsTouched = true);

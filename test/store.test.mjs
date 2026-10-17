@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { adoptIdentity, listGraphs, loadGraph, loadGroupNames, loadPeople, me, publishedHere, saveGraph, saveGroupNames, teaser, unpublishGraph } from '../extension/lib/store.js';
+import { adoptIdentity, takeIdentity, listGraphs, loadGraph, loadGroupNames, loadPeople, me, publishedHere, saveGraph, saveGroupNames, teaser, unpublishGraph } from '../extension/lib/store.js';
 import { buildHash, parseHash } from '../extension/lib/share.js';
 import { mergeGraphs, ownGraph } from '../extension/lib/merge.js';
 
@@ -52,6 +52,7 @@ function fakeNeon() {
       return ok([[1]]);
     }
     // (who may read what is the database's job, tested against it: db/graphs.sql)
+    if (query === 'select count(*) from list_graphs($1, $2)') return ok([[keys.has(params[0]) && keys.get(params[0]) === params[1] ? 1 : 0]]);
     if (query.includes('from list_graphs($1, $2)')) {
       const owners = [...graphs.keys()].sort((x, y) => dates.get(y) - dates.get(x));
       return ok(owners.map((o) => {
@@ -230,9 +231,24 @@ test('publishing makes this browser a viewer; the site adopts that from a link',
     const { key } = me();
     // another browser (the site), handed the identity by a link from the extension
     store.clear();
-    assert.equal(adoptIdentity('me', 'not a key'), false);
-    assert.equal(adoptIdentity('me', key), true);
+    assert.equal(await adoptIdentity('me', 'not a key', neon), false);
+    assert.equal(await adoptIdentity('me', key, neon), true);
     assert.deepEqual(me(), { owner: 'me', key });
+    // a stale key (an old extension's, a failed publish's) never replaces the working one,
+    // and a working one replaces a stale one
+    const stale = 'ab'.repeat(24);
+    assert.equal(await adoptIdentity('me', stale, neon), true);
+    assert.deepEqual(me(), { owner: 'me', key });
+    store.set('ownerKey:me', stale);
+    await adoptIdentity('me', key, neon);
+    assert.deepEqual(me(), { owner: 'me', key });
+    // the private link: out of the address, the key sorted out by the time adopted settles
+    store.clear();
+    const taken = takeIdentity(`#o=me&me=me&mk=${key}`, neon);
+    assert.equal(taken.rest, '#o=me');
+    await taken.adopted;
+    assert.deepEqual(me(), { owner: 'me', key });
+    assert.equal(takeIdentity('#o=me'), null);
     assert.deepEqual(await teaser('me', neon), { owner: 'me', people: 3, name: '', photo: null, graphs: 1 });
     assert.equal(await teaser('nobody', neon), null);
     // unpublishing ends it

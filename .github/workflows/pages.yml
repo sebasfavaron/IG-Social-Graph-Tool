@@ -34,7 +34,11 @@ jobs:
           cp extension/icon128.png extension/og.png extension/install.html extension/welcome.html extension/welcome.js _site/
           # what install.html downloads: the extension's files at the zip's top level, so
           # double-clicking it (macOS) or "Extract all" (Windows) gives one folder to load
-          (cd extension && zip -qr -X ../_site/ig-social-graph.zip . -x 'explore.*' 'install.html' 'og.png' 'welcome.*')
+          # (without the development match on localhost:8765, which would let any page served
+          # there talk to the crawler)
+          ext="$RUNNER_TEMP/extension" && cp -R extension "$ext"
+          jq '.content_scripts[0].matches |= map(select(startswith("http://localhost") | not))' extension/manifest.json > "$ext/manifest.json"
+          (cd "$ext" && zip -qr -X "$GITHUB_WORKSPACE/_site/ig-social-graph.zip" . -x 'explore.*' 'install.html' 'og.png' 'welcome.*')
           # the popup compares this with its own version and offers the zip when it is newer
           jq '{version}' extension/manifest.json > _site/version.json
       - uses: actions/configure-pages@v5

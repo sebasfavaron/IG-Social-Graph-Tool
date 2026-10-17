@@ -31,9 +31,10 @@ export function ask(type, args = {}) {
   });
 }
 
-// cb() whenever the crawl or its photos change in the extension
+// cb(keys) whenever the crawl or its photos change in the extension; keys: which of
+// 'crawl' and 'thumbs' (null from a bridge before version 2, which does not say)
 export function onLocalChange(cb) {
   window.addEventListener('message', (event) => {
-    if (event.source === window && event.data?.source === 'igsg-extension' && event.data.type === 'changed') cb();
+    if (event.source === window && event.data?.source === 'igsg-extension' && event.data.type === 'changed') cb(event.data.keys || null);
   });
 }

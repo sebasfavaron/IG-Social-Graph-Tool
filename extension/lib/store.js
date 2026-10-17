@@ -114,21 +114,41 @@ export function me() {
   const key = owner && readOwnerKey(owner);
   return key ? { owner, key } : null;
 }
-// The extension keeps the key; links from it to the site carry it once (after the "#",
-// never sent anywhere), and the site keeps it from then on.
-export function adoptIdentity(owner, key) {
+// Whether the database takes this key for the owner's graph (it opens their network). False
+// too when the graph is not published, or the database cannot be reached.
+async function keyWorks(owner, key, fetchImpl) {
+  try {
+    const rows = await sharesQuery('select count(*) from list_graphs($1, $2)', [owner, key], fetchImpl);
+    return Number(rows[0]?.[0]) > 0;
+  } catch (_) {
+    return false;
+  }
+}
+// A key handed over by a private link (or, for graphs published before 2.3.0, by the
+// extension): this browser is that publisher from now on. A browser that already holds a
+// different key for that owner keeps it, unless the database takes the new one and not the
+// old: a stale key never replaces a working one. -> whether the owner is now this browser's.
+export async function adoptIdentity(owner, key, { fetchImpl = fetch } = {}) {
   if (!/^[A-Za-z0-9._]{1,30}$/.test(owner || '') || !/^[0-9a-f]{48}$/.test(key || '')) return false;
+  const held = readOwnerKey(owner);
+  if (held && held !== key) {
+    const [fresh, old] = await Promise.all([keyWorks(owner, key, fetchImpl), keyWorks(owner, held, fetchImpl)]);
+    if (old || !fresh) {
+      store('me', owner);
+      return true;
+    }
+  }
   store(ownerKeyName(owner), key);
   store('me', owner);
   return true;
 }
-// A link from the extension that carries its identity: &me=<owner>&mk=<key> in the hash.
-// Adopts it, and -> the hash without it (for the address bar), or null if there was none.
-export function takeIdentity(hash) {
+// A private link: &me=<owner>&mk=<key> in the hash. -> the hash without it (for the
+// address bar), or null if there was none; adopted() settles once the key is sorted out.
+export function takeIdentity(hash, options) {
   const m = /[#&]me=([A-Za-z0-9._]{1,30})&mk=([0-9a-f]{48})/.exec(hash || '');
-  if (!m || !adoptIdentity(m[1], m[2])) return null;
+  if (!m) return null;
   const rest = hash.replace(m[0].slice(1), '').replace('#&', '#').replace(/&&/g, '&').replace(/&$/, '');
-  return rest === '#' ? '' : rest;
+  return { rest: rest === '#' ? '' : rest, adopted: adoptIdentity(m[1], m[2], options) };
 }
 // the same, to add to a link to the site
 export function identityParams() {
@@ -147,6 +167,13 @@ export async function unpublishGraph(owner, { fetchImpl = fetch } = {}) {
   await sharesQuery('select unpublish($1, $2)', [owner, key], fetchImpl);
   writeSaved(owner, null);
   if (read('me') === owner) store('me', null); // it no longer opens the network
+}
+
+// Whether this browser last published exactly this graph with these names and photos
+// (what saveGraph would skip sending).
+export async function publishedAsIs({ owner, g, ids, profiles = {}, photos = new Map() }) {
+  const saved = readSaved(owner);
+  return !!saved && saved === (await fingerprint(g, peopleRows(ids, profiles, photos)));
 }
 
 // Saves an owner's crawl and the people in it (only those in ids). onlyIfMissing: for

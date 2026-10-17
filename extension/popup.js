@@ -1,5 +1,5 @@
 import { SHARE_BASE_URL } from './lib/share.js';
-import { identityParams, takeIdentity } from './lib/store.js';
+import { me } from './lib/store.js';
 import { lang, langButton, t, translateStatic, why } from './lib/i18n.js';
 import { barWidth, checkedText, errorText, statusText } from './lib/crawlStatus.js';
 
@@ -40,23 +40,22 @@ $('reset').onclick = () => {
   if (confirm(t('p.confirmReset'))) act(() => send('reset'));
 };
 // Graphs published before 2.3.0 were published from the extension's own page, whose key
-// is kept here (this origin's localStorage); the link hands it to the site, which keeps it.
-function identityHash() {
-  let params = identityParams();
-  if (!params) {
+// is kept here (this origin's localStorage). It is left where the bridge can hand it to the
+// site (bridge.js legacyKey), never in a link: links end up in the browser's history. The
+// site only takes it over a key of its own when the database says the old one is stale.
+function legacyKey() {
+  try {
+    const who = me();
+    if (who) return who;
     // published before the browser remembered whose it was: the one key there is
-    try {
-      const keys = Object.keys(localStorage).filter((k) => k.startsWith('ownerKey:'));
-      if (keys.length === 1) {
-        const owner = keys[0].slice('ownerKey:'.length);
-        takeIdentity(`#me=${owner}&mk=${localStorage.getItem(keys[0])}`);
-        params = identityParams();
-      }
-    } catch (_) {}
-  }
-  return params ? `#${params.slice(1)}` : '';
+    const keys = Object.keys(localStorage).filter((k) => k.startsWith('ownerKey:'));
+    if (keys.length === 1) return { owner: keys[0].slice('ownerKey:'.length), key: localStorage.getItem(keys[0]) };
+  } catch (_) {}
+  return null;
 }
-$('view').onclick = () => chrome.tabs.create({ url: SHARE_BASE_URL + identityHash() });
+const legacy = legacyKey();
+if (legacy) chrome.storage.local.set({ legacyKey: legacy });
+$('view').onclick = () => chrome.tabs.create({ url: SHARE_BASE_URL });
 
 chrome.storage.onChanged.addListener(() => act(() => send('getState')));
 // Spanish by default; the EN/ES button switches it, shared with the site

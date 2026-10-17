@@ -374,6 +374,18 @@ function summary() {
   };
 }
 
+// Settings come from the site's page too (bridge.js): never faster than one request every
+// 2 s, whatever a page sends.
+function saneSettings(settings = {}) {
+  const delay = Number(settings.delaySec);
+  const max = Number(settings.maxFollowers);
+  return {
+    delaySec: Number.isFinite(delay) ? Math.min(120, Math.max(2, delay)) : 6,
+    maxFollowers: Number.isFinite(max) ? Math.max(0, Math.floor(max)) : 0,
+  };
+}
+let photoQueue = Promise.resolve();
+
 const handlers = {
   async getState() {
     return summary();
@@ -386,13 +398,13 @@ const handlers = {
   },
   async start({ settings }) {
     const viewer = await detectViewer();
-    state = initialState(viewer, settings);
+    state = initialState(viewer, saneSettings(settings));
     await setStatus(STATUS.RUNNING);
     return summary();
   },
   async resume({ settings }) {
     if (!state) throw new Error('Nothing to resume.');
-    if (settings) state.settings = { ...state.settings, ...settings };
+    if (settings) state.settings = saneSettings({ ...state.settings, ...settings });
     state.error = null;
     if (state.phase === 'done' && state.settings.maxFollowers) state.phase = 'mutuals'; // limit was raised
     await setStatus(STATUS.RUNNING);
@@ -408,7 +420,11 @@ const handlers = {
     return summary();
   },
   async profilePhoto({ username }) {
-    return largePhoto(username);
+    if (!/^[A-Za-z0-9._]{1,30}$/.test(username || '')) throw new Error('not a username');
+    // one Instagram request at a time, a second apart: this one asks with your session
+    const turn = photoQueue.then(() => largePhoto(username));
+    photoQueue = turn.catch(() => {}).then(() => new Promise((r) => setTimeout(r, 1000)));
+    return turn;
   },
   async pause() {
     await setStatus(STATUS.PAUSED);
@@ -427,7 +443,7 @@ const handlers = {
 };
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  const handler = handlers[msg?.type];
+  const handler = Object.hasOwn(handlers, msg?.type) ? handlers[msg.type] : null;
   if (!handler) return false;
   // a web page (through bridge.js) never deletes the data: only the popup does
   if (msg.type === 'reset' && sender.tab) return sendResponse({ ok: false, error: 'not from a page' }), false;

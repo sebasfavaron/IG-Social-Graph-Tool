@@ -116,9 +116,12 @@ const sqlReady = new Promise((resolve, reject) => {
   .then((module) => (SQL = module));
 sqlReady.catch(() => {}); // reported by load(), which waits for it
 
-// a link from the extension: this browser is that publisher from now on
-const cleaned = takeIdentity(location.hash);
-if (cleaned !== null) history.replaceState(null, '', location.pathname + location.search + cleaned);
+// a private link: out of the address bar at once, its key sorted out before reading with it
+const taken = takeIdentity(location.hash);
+if (taken) {
+  history.replaceState(null, '', location.pathname + location.search + taken.rest);
+  await taken.adopted;
+}
 
 function ownersFromHash() {
   const state = parseHash(location.hash);

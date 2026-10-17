@@ -102,7 +102,7 @@ Every link to the site shows the same preview card in chats ([`extension/og.png`
 | `extension/lib/groupNames.js` | keeps each friend-group name on its group across crawls |
 | `extension/lib/merge.js` | combines two graphs and tells whose circle each person is in |
 | `extension/explore.html`, `explore.js` | SQL over shared graphs (sql.js), site only |
-| `extension/bridge.js`, `extension/lib/bridge.js` | the extension's side (content script on the site only) and the page's side of reading the local crawl and talking to the crawler; it passes every request on except deleting the data, so only crawler changes need an extension update |
+| `extension/bridge.js`, `extension/lib/bridge.js` | the extension's side (content script on the site only) and the page's side of reading the local crawl and talking to the crawler; it passes on a fixed list of crawler requests (never deleting the data) and clamps nothing itself: the crawler (background.js) refuses settings faster than one request every 2 s. Only crawler changes need an extension update |
 | `extension/lib/i18n.js` | the viewer's words in Spanish (default) and English; static text in viewer.html carries `data-i18n` keys |
 | `extension/lib/store.js` | shared database: saves and reads graphs by owner and people by username through Neon's HTTP SQL endpoint |
 | `extension/lib/vault.js` | older encrypted shares: reads them so the viewer can copy them over |
