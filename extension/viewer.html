@@ -635,8 +635,11 @@
       body.home #combine-dialog[open] {
         display: flex;
       }
+      /* the rest of the panel's height, never less than its rows: with flex: 1 (a zero
+         basis) Safari folded the scrolling list to nothing */
       body.home #picker-list {
-        flex: 1;
+        flex: 1 1 auto;
+        min-height: 0;
         max-height: none;
       }
       body.home #combine-cancel {

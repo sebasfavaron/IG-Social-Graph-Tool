@@ -1088,7 +1088,8 @@ $('device-link').onclick = () => {
   const who = me();
   if (!who) return;
   $('device-lead').textContent = t('deviceLead', who.owner);
-  $('device-url').value = `${SHARE_BASE_URL}#${identityParams().slice(1)}`;
+  // opens your graph there, and that browser keeps the key from then on
+  $('device-url').value = `${SHARE_BASE_URL}${buildHash({ o: who.owner, m: [] })}${identityParams()}`;
   $('device-dialog').showModal();
   $('device-close').focus();
 };
