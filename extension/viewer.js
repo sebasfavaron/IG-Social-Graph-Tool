@@ -20,7 +20,7 @@ import {
 import { fromPositional, groupAnchors, namesFor, rename } from './lib/groupNames.js';
 import { lang, setLang, t, translateStatic, why } from './lib/i18n.js';
 import { ask, hasBridge, onLocalChange } from './lib/bridge.js';
-import { paint as paintCrawlPanel, startCrawlPanel } from './lib/crawlPanel.js';
+import { paint as paintCrawlPanel, showCrawlPanel, startCrawlPanel } from './lib/crawlPanel.js';
 import { drawHero } from './lib/hero.js';
 import { MAX_OWNERS, circles, mergeGraphs, ownGraph } from './lib/merge.js';
 
@@ -1255,7 +1255,7 @@ function updateShareButton() {
     : publishes
       ? ['shareTitle', 'shareWide', 'shareNarrow']
       : ['copyTitle', 'copyWide', 'copyNarrow'];
-  button.disabled = waits;
+  button.classList.toggle('waits', waits);
   button.classList.toggle('publishes', publishes);
   button.title = t(title);
   button.replaceChildren(
@@ -1267,6 +1267,9 @@ let shareFlash = null;
 $('share').onclick = () => {
   if (!shown) return;
   const missing = unpublished();
+  // part of a crawl that is still going: show how far it is instead (the extension's own
+  // page has no panel, and there the button only says so)
+  if (missing.some(([o]) => o === crawling)) return bridged && showCrawlPanel();
   if (!missing.length) return share();
   $('publish-lead').textContent = t('publishLead', missing.map(([o]) => `@${o}`).join(' + '));
   $('publish-dialog').showModal();

@@ -79,6 +79,16 @@ function setOpen(open) {
   $('crawl-toggle').setAttribute('aria-expanded', String(open));
 }
 
+// "why can't I publish yet": the panel opens and flashes, with how far the crawl is
+export function showCrawlPanel() {
+  setOpen(true);
+  const box = $('crawl');
+  box.classList.remove('flash');
+  void box.offsetWidth; // restart the animation
+  box.classList.add('flash');
+  $('crawl-toggle').focus();
+}
+
 async function act(request) {
   try {
     draw(await request());
