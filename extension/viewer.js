@@ -583,6 +583,20 @@ function panelInsets() {
   return { right: 0, bottom: shown || (document.body.classList.contains('sheet-folded') ? 90 : Math.round(innerHeight * 0.4)) };
 }
 
+// The extension's crawl, as the site first shows it, is not known to be published; when
+// the database holds exactly this graph (republished from this browser or any other), the
+// button only copies the link instead of offering to publish again.
+async function markIfPublished(owner) {
+  const crawl = parts.get(owner);
+  if (!crawl || !me() || crawling === owner || storedOwners.has(owner)) return;
+  // packed as publishing packs it (share())
+  const [stored, mine] = await Promise.all([loadGraph(owner).catch(() => null), encodeGraph(crawl)]);
+  if (!stored || stored !== mine || parts.get(owner) !== crawl) return;
+  storedOwners.add(owner);
+  updateShareButton();
+  syncUrl();
+}
+
 // ---- friend groups key: named by the graph's owner, names in the database ---------------
 let groups = { groupOf: new Map(), sizes: [] };
 let groupNames = []; // per group index, as shown
@@ -1543,7 +1557,10 @@ const cleaned = takeIdentity(location.hash);
 if (cleaned !== null) history.replaceState(null, '', location.pathname + location.search + cleaned);
 if (!(await openShareHash())) {
   // your own crawl first, from the extension (on the site, through its bridge)
-  if (local.crawl) await show(toGraph(local.crawl));
+  if (local.crawl) {
+    await show(toGraph(local.crawl));
+    markIfPublished(shown?.username);
+  }
   else {
     // with the extension: how to get a graph of your own; without it, only the list
     $('empty').hidden = !hasLocal;
