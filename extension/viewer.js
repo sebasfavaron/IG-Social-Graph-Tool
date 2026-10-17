@@ -1129,7 +1129,9 @@ function renderPicker() {
   if (!me()) $('picker-status').textContent = t('pickerLocked');
   else if (shared && !visible.length) $('picker-status').textContent = query ? t('pickerNoMatch') : t('pickerNone');
   else if (shared) $('picker-status').textContent = full ? t('pickerMax', MAX_OWNERS) : '';
-  $('picker-go').textContent = t('pickerGo', chosen.length);
+  // just you: "your graph" (the extension's crawl, or the one this browser published)
+  const mine = chosen.length === 1 && (chosen[0] === me()?.owner || chosen[0] === ownCrawlOwner);
+  $('picker-go').textContent = t('pickerGo', chosen.length, mine);
   $('picker-go').disabled = !chosen.length;
 }
 $('picker-filter').oninput = renderPicker;
