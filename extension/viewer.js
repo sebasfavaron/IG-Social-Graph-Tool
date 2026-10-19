@@ -603,17 +603,22 @@ function panelInsets() {
 }
 
 // The extension's crawl, as the site first shows it, is not known to be published; when
-// the database holds exactly this graph and this browser sent it with the same names and
-// photos, the button only copies the link instead of offering to publish again. New names
-// or photos (a refresh, late downloads) keep "Publish", which sends them.
+// the database holds exactly this graph, the button only copies the link instead of
+// offering to publish again.
 async function markIfPublished(owner) {
   const crawl = parts.get(owner);
   if (!crawl || !me() || crawling === owner || storedOwners.has(owner)) return;
   // packed as publishing packs it (share())
   const [stored, mine] = await Promise.all([loadGraph(owner).catch(() => null), encodeGraph(crawl)]);
   if (!stored || stored !== mine || parts.get(owner) !== crawl) return;
-  if (!(await publishedAsIs({ owner, g: mine, ids: new Set(crawl.nodes.map((n) => n.id)), profiles, photos }))) return;
+  // Same follows as published. Names and photos keep arriving after a crawl ends (photo
+  // downloads, a refresh): from the browser that published it they go up quietly, since
+  // they are the same people's, rather than asking to publish again.
+  const ids = new Set(crawl.nodes.map((n) => n.id));
+  const asIs = await publishedAsIs({ owner, g: mine, ids, profiles, photos });
+  if (!asIs && !publishedHere(owner)) return;
   if (parts.get(owner) !== crawl) return;
+  if (!asIs) saveGraph({ owner, g: mine, ids, profiles, photos }).catch(() => {});
   storedOwners.add(owner);
   updateShareButton();
   syncUrl();
