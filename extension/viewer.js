@@ -252,10 +252,14 @@ function syncUrl() {
     // history entry, so Back returns to the previous graph; zoom, selection and names only
     // rewrite the current one. Replacing every time left Back on whatever link was opened
     // before this page.
-    const before = graphOf(parseHash(location.hash));
+    // Picking someone, letting them go, or keeping one of their groups on is a step too, so
+    // Back retraces who you looked at.
+    const was = parseHash(location.hash);
+    const next = parseHash(hash);
     const url = location.pathname + location.search + hash;
     // (from the bare address too: that is home, and Back should land there)
-    if (before !== graphOf(parseHash(hash))) history.pushState(null, '', url);
+    const step = graphOf(was) !== graphOf(next) || (was?.p || null) !== (next?.p || null) || (was?.c || null) !== (next?.c || null);
+    if (step) history.pushState(null, '', url);
     else history.replaceState(null, '', url);
   }, 250);
 }
@@ -382,6 +386,7 @@ function openPhoto() {
     caption.append(span);
   }
   photoDialog.showModal();
+  backCloses(photoDialog, closePhoto);
   const ms = 380 * motion();
   const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
   big.animate(
@@ -1109,6 +1114,7 @@ function openPicker() {
     if (dialog.contains(document.activeElement)) document.activeElement.blur();
   } else {
     dialog.showModal();
+    backCloses(dialog);
   }
   if (!me()) {
     shared = []; // nothing to read before this browser publishes
@@ -1200,6 +1206,7 @@ $('device-link').onclick = () => {
   // opens your graph there, and that browser keeps the key from then on
   $('device-url').value = `${SHARE_BASE_URL}${buildHash({ o: who.owner, m: [] })}${identityParams()}`;
   $('device-dialog').showModal();
+  backCloses($('device-dialog'));
   $('device-close').focus();
 };
 $('device-close').onclick = () => $('device-dialog').close();
@@ -1306,10 +1313,16 @@ async function openShareHash() {
   if (!graphControl) return true;
   if (state.p) {
     // with a saved view, select in place; without one, pan to the person like search does
-    if (state.v) graphControl.select(state.p);
-    else focusPerson(state.p);
+    if (state.p !== graphControl.selected()) {
+      if (state.v) graphControl.select(state.p);
+      else focusPerson(state.p);
+    }
     pinned = state.c;
-    if (pinned) graphControl.showOnly(pinned);
+    graphControl.showOnly(pinned);
+  } else if (graphControl.hasSelection()) {
+    // Back to before someone was picked
+    graphControl.clear();
+    pinned = null;
   }
   if (state.v) {
     graphControl.setView(state.v);
@@ -1328,6 +1341,16 @@ async function openShareHash() {
 // Both can fire for one step, so a step is handled once.
 let navigating = false;
 function onNavigate() {
+  // phones: Back closed the photo or dialog on top (or it closed itself and took its step back)
+  if (skipPop) {
+    skipPop = false;
+    return;
+  }
+  if (onTop) {
+    const { close } = onTop;
+    onTop = null;
+    return close();
+  }
   // a private link pasted into an open tab only changes the hash: take it, and start over
   const taken = takeIdentity(location.hash);
   if (taken) {
@@ -1343,6 +1366,25 @@ function onNavigate() {
 }
 window.addEventListener('hashchange', onNavigate);
 window.addEventListener('popstate', onNavigate);
+
+// ---- phones: Back closes the photo or dialog on top instead of leaving the page ----------
+// Opening one adds a history step with the same address; Back closes it, and closing it any
+// other way takes that step back so Back is not spent twice.
+let onTop = null; // { dialog, close } for the step the open one added
+let skipPop = false;
+function backCloses(dialog, close = () => dialog.close()) {
+  if (!narrow.matches) return;
+  history.pushState(history.state, '', location.href);
+  onTop = { dialog, close };
+}
+for (const dialog of document.querySelectorAll('dialog')) {
+  dialog.addEventListener('close', () => {
+    if (onTop?.dialog !== dialog) return;
+    onTop = null;
+    skipPop = true;
+    history.back();
+  });
+}
 
 // Share: each crawl on screen goes to the shared storage with its people's names and
 // photos (store.js), and the link carries only the owners' usernames, plus how it is
@@ -1380,6 +1422,7 @@ $('share').onclick = () => {
   if (!missing.length) return share();
   $('publish-lead').textContent = t('publishLead', missing.map(([o]) => `@${o}`).join(' + '));
   $('publish-dialog').showModal();
+  backCloses($('publish-dialog'));
   $('publish-cancel').focus(); // the safe choice is the one Enter picks
 };
 $('publish-cancel').onclick = () => $('publish-dialog').close();
@@ -1389,6 +1432,7 @@ $('unpublish').onclick = () => {
   $('unpublish-lead').textContent = t('unpublishLead', owner);
   $('unpublish-error').hidden = true;
   $('unpublish-dialog').showModal();
+  backCloses($('unpublish-dialog'));
   $('unpublish-cancel').focus();
 };
 $('unpublish-cancel').onclick = () => $('unpublish-dialog').close();
