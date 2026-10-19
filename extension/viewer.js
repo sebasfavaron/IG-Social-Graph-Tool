@@ -260,7 +260,7 @@ function syncUrl() {
     // (from the bare address too: that is home, and Back should land there)
     const step = graphOf(was) !== graphOf(next) || (was?.p || null) !== (next?.p || null) || (was?.c || null) !== (next?.c || null);
     if (step) history.pushState(null, '', url);
-    else history.replaceState(null, '', url);
+    else history.replaceState(history.state, '', url); // (keeps the panel filter, below)
   }, 250);
 }
 // which graph a link shows, regardless of how it is being looked at
@@ -555,12 +555,27 @@ for (const tab of document.querySelectorAll('[data-tab]')) {
     updatePanel();
   };
 }
-$('panel-filter').oninput = () => updatePanel();
+// The filter goes with the history step it was typed in (in its state, not the link), so
+// Back and Forward bring it back with the person.
+function keepFilter() {
+  history.replaceState({ ...history.state, filter: $('panel-filter').value }, '', location.href);
+}
+function restoreFilter() {
+  const filter = history.state?.filter || '';
+  if (!graphControl?.hasSelection() || $('panel-filter').value === filter) return;
+  $('panel-filter').value = filter;
+  updatePanel();
+}
+$('panel-filter').oninput = () => {
+  updatePanel();
+  keepFilter();
+};
 $('panel-filter').onkeydown = (e) => {
   if (e.key === 'Escape' && $('panel-filter').value) {
     e.stopPropagation(); // clear the filter first, the selection on the next Esc
     $('panel-filter').value = '';
     updatePanel();
+    keepFilter();
   }
 };
 $('sheet-handle').onclick = () => {
@@ -1367,7 +1382,7 @@ function onNavigate() {
   if (navigating) return;
   navigating = true;
   setTimeout(() => (navigating = false));
-  openShareHash();
+  openShareHash().then(restoreFilter);
 }
 window.addEventListener('hashchange', onNavigate);
 window.addEventListener('popstate', onNavigate);
