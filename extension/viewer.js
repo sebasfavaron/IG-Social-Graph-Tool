@@ -276,13 +276,13 @@ let pinned = null; // the group kept on (follower | following | mutual), also in
 const sections = [...document.querySelectorAll('#panel section')];
 const expanded = new Set(); // groups showing all their names, reset per selection
 const LIST_LIMIT = 30;
-const FILTER_FROM = 15; // people in the panel before it offers a filter box
 // Headings name the selected person and put the count where a sentence would, so the
 // direction of each group reads naturally: "9 follow @x", "@x follows 5".
+// n: how many (for the grammar); shown: how it is written, "3 (40)" while filtering
 const LABELS = {
-  follower: (name, n) => t('follower', name, n),
-  following: (name, n) => t('following', name, n),
-  mutual: (name, n) => t('mutual', name, n),
+  follower: (name, n, shown = n) => t('follower', name, n, shown),
+  following: (name, n, shown = n) => t('following', name, n, shown),
+  mutual: (name, n, shown = n) => t('mutual', name, n, shown),
 };
 const shorten = (name, max = 22) => (name.length > max ? `${name.slice(0, max - 1)}…` : name);
 let lastSelected = null;
@@ -457,14 +457,18 @@ function updatePanel() {
   if (people) {
     if (selected !== lastSelected) paintWho(selected);
     const everyone = people.follower.length + people.following.length + people.mutual.length;
-    $('panel-filter').hidden = everyone < FILTER_FROM;
+    // the graph lights only the people the filter leaves
+    graphControl.filterPeople(query ? Object.values(people).flat().filter(matches) : null);
     $('profile').href = `https://www.instagram.com/${encodeURIComponent(selected)}/`;
     $('profile').setAttribute('aria-label', t('openOnInstagramOf', selected));
     for (const section of sections) {
       const cat = section.dataset.cat;
       const ids = [...people[cat]].sort((a, b) => a.localeCompare(b));
       const toggle = section.querySelector('.group-toggle');
-      toggle.querySelector('.label').textContent = LABELS[cat](shorten(selected), ids.length);
+      // filtering: "matches (all)"
+      const found = query ? ids.filter(matches) : ids;
+      const count = query && ids.length ? `${found.length} (${ids.length})` : ids.length;
+      toggle.querySelector('.label').textContent = LABELS[cat](shorten(selected), found.length, count);
       toggle.title = pinned === cat ? t('showAllGroups') : t('showOnlyGroup');
       toggle.setAttribute('aria-pressed', String(pinned === cat));
       toggle.disabled = ids.length === 0;
@@ -472,7 +476,6 @@ function updatePanel() {
       if (selected !== lastSelected || section.dataset.rendered !== renderKey) {
         const list = section.querySelector('ul');
         // a filter shows every match; without one, the first LIST_LIMIT and "Show all"
-        const found = ids.filter(matches);
         const shownIds = expanded.has(cat) || query ? found : ids.slice(0, LIST_LIMIT);
         list.replaceChildren(...shownIds.map(personButton));
         if (query && ids.length && !found.length) {
@@ -503,7 +506,8 @@ function updatePanel() {
     }
     for (const tab of document.querySelectorAll('[data-tab]')) {
       const cat = tab.dataset.tab;
-      tab.querySelector('.label').textContent = TAB_LABELS[cat](selected, people[cat].length);
+      const all = people[cat].length;
+      tab.querySelector('.label').textContent = TAB_LABELS[cat](selected, query && all ? `${people[cat].filter(matches).length} (${all})` : all);
       tab.setAttribute('aria-selected', String(cat === sheetTab));
       tab.classList.toggle('only', pinned === cat);
       tab.disabled = people[cat].length === 0;

@@ -90,6 +90,8 @@ export function drawGraph(
   // following = them -> X only, mutual = X -> them where they also follow X
   let selection = null;
   let only = null; // one category, or null for all three
+  let keep = null; // usernames the panel's filter leaves, or null for everyone
+  const kept = (l) => !keep || keep.has((l.source === selection?.node ? l.target : l.source).id);
   let revealed = new Set(); // people shown at full strength for the current selection
   let pointedGroup = null; // friend group index being pointed at in the key: it takes over the view
   let heldGroup = null; // a group kept on from the key; someone selected shows over it
@@ -125,7 +127,7 @@ export function drawGraph(
     if (selection) {
       for (const [cat, catLinks] of Object.entries(selection.links)) {
         if (only && only !== cat) continue;
-        for (const l of catLinks) revealed.add(l.source === selection.node ? l.target : l.source);
+        for (const l of catLinks) if (kept(l)) revealed.add(l.source === selection.node ? l.target : l.source);
       }
     }
     redraw();
@@ -379,10 +381,11 @@ export function drawGraph(
     // mutual links are heavier, so the three groups differ by more than colour
     if (showSel) {
       // hundreds of strong lines turn into a solid wash: fade them as their number grows
-      const drawn = Object.entries(showSel.links).reduce((sum, [c, l]) => sum + (only && only !== c ? 0 : l.length), 0);
+      const shownLinks = Object.entries(showSel.links).map(([c, l]) => [c, only && only !== c ? [] : keep ? l.filter(kept) : l]);
+      const drawn = shownLinks.reduce((sum, [, l]) => sum + l.length, 0);
       ctx.globalAlpha = Math.max(0.25, Math.min(0.85, 0.85 * Math.sqrt(40 / Math.max(1, drawn))));
-      for (const [cat, catLinks] of Object.entries(showSel.links)) {
-        if (only && only !== cat) continue;
+      for (const [cat, catLinks] of shownLinks) {
+        if (!catLinks.length) continue;
         ctx.strokeStyle = ctx.fillStyle = colors[cat];
         ctx.lineWidth = (cat === 'mutual' ? linkWidth * 1.6 : linkWidth) / k;
         ctx.beginPath();
@@ -676,6 +679,11 @@ export function drawGraph(
     ids: () => nodes.map((n) => n.id),
     // null shows all three categories again
     showOnly: (category) => selection && paint(category),
+    // the panel's filter: only these of the selected person's people stay lit (null: all)
+    filterPeople: (ids) => {
+      keep = ids ? new Set(ids) : null;
+      if (selection) paint(only);
+    },
     counts: () =>
       selection && Object.fromEntries(Object.entries(selection.links).map(([c, l]) => [c, l.length])),
     // usernames per category for the selected person
