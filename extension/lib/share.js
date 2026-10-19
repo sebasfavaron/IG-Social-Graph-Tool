@@ -224,13 +224,15 @@ export async function decodeGraph(encoded) {
 // v is the view centre relative to the layout's centroid; it is left out until the
 // viewer moves the view by hand, so a fresh link fits whatever screen opens it.
 export const MAX_GROUP_NAME = 30;
+const MAX_FILTER = 50;
 
-export function buildHash({ o, g, s, k, p, c, v, n, m }) {
+export function buildHash({ o, g, s, k, p, c, f, v, n, m }) {
   const parts = o ? [`o=${encodeURIComponent(o)}`] : s ? [`s=${s}`, `k=${k}`] : [`g=${g}`];
   const more = [m].flat().filter(Boolean);
   if (more.length) parts.push(`m=${more.map(encodeURIComponent).join(',')}`);
   if (p) parts.push(`p=${encodeURIComponent(p)}`);
   if (p && c) parts.push(`c=${c}`);
+  if (p && f) parts.push(`f=${encodeURIComponent(f.slice(0, MAX_FILTER))}`); // the panel's filter
   if (v) parts.push(`v=${Math.round(v.x)},${Math.round(v.y)},${+v.k.toFixed(2)}`);
   if (n?.some(Boolean)) {
     const names = n.map((name) => encodeURIComponent((name || '').slice(0, MAX_GROUP_NAME)));
@@ -252,6 +254,7 @@ export function parseHash(hash) {
     k: params.get('k'),
     p: params.get('p') || null,
     c: ['follower', 'following', 'mutual'].includes(category) ? category : null,
+    f: params.get('f')?.slice(0, MAX_FILTER) || null,
     v: [x, y, k].every(Number.isFinite) && k > 0 ? { x, y, k } : null,
     n: groupNames(hash),
     // m=b,c (or m=b&m=c, as someone might type it): the other owners, in order

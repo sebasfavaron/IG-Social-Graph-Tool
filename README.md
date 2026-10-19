@@ -107,7 +107,7 @@ Every link to the site shows the same preview card in chats ([`extension/og.png`
 | `extension/lib/store.js` | shared database: saves and reads graphs by owner and people by username through Neon's HTTP SQL endpoint |
 | `extension/lib/vault.js` | older encrypted shares: reads them so the viewer can copy them over |
 | `db/shares.sql` | the share storage: table, the two functions, the public role allowed to call only those |
-| `extension/lib/share.js` | packs the graph and view state into the link: `#g=…&p=…&c=…&v=…&n=…&m=…` |
+| `extension/lib/share.js` | packs the graph and view state into the link: `#g=…&p=…&c=…&f=…&v=…&m=…` (f: the panel filter) |
 | `extension/viewer.html`, `viewer.js` | the page: panel, search, groups key, themes, link state |
 | `extension/lib/hero.js` | the site's front page for newcomers: a made-up graph that turns and lights one friend group at a time |
 | `extension/install.html` | site only: step-by-step install for non-technical people; phones and non-Chromium browsers get told to switch |

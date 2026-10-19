@@ -47,11 +47,14 @@ test('view state round-trips through the hash and junk values are dropped', asyn
   const { buildHash, parseHash } = await import('../extension/lib/share.js');
   const hash = buildHash({ g: 'abc_-', s: null, k: null, p: 'jose.favaron', c: 'mutual', v: { x: -12.4, y: 30.6, k: 2.456 } });
   assert.equal(hash, '#g=abc_-&p=jose.favaron&c=mutual&v=-12,31,2.46');
-  assert.deepEqual(parseHash(hash), { o: null, g: 'abc_-', s: null, k: null, p: 'jose.favaron', c: 'mutual', v: { x: -12, y: 31, k: 2.46 }, n: null, m: [] });
-  assert.deepEqual(parseHash('#g=abc&c=evil&v=1,2'), { o: null, g: 'abc', s: null, k: null, p: null, c: null, v: null, n: null, m: [] });
+  assert.deepEqual(parseHash(hash), { o: null, g: 'abc_-', s: null, k: null, p: 'jose.favaron', c: 'mutual', f: null, v: { x: -12, y: 31, k: 2.46 }, n: null, m: [] });
+  assert.deepEqual(parseHash('#g=abc&c=evil&v=1,2'), { o: null, g: 'abc', s: null, k: null, p: null, c: null, f: null, v: null, n: null, m: [] });
   assert.equal(parseHash('#other'), null);
+  // the panel's filter, only with someone selected
+  assert.equal(parseHash(buildHash({ o: 'me', p: 'ana', f: 'José & co' })).f, 'José & co');
+  assert.equal(buildHash({ o: 'me', f: 'x' }), '#o=me');
   // old links carried only the graph
-  assert.deepEqual(parseHash('#g=abc'), { o: null, g: 'abc', s: null, k: null, p: null, c: null, v: null, n: null, m: [] });
+  assert.deepEqual(parseHash('#g=abc'), { o: null, g: 'abc', s: null, k: null, p: null, c: null, f: null, v: null, n: null, m: [] });
 });
 
 test('group names survive the link, including separators and odd characters', async () => {

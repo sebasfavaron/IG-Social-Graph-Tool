@@ -217,6 +217,7 @@ function viewState() {
   return {
     p: graphControl?.selected(),
     c: pinned,
+    f: $('panel-filter').value.trim() || null,
     v: viewTouched && graphControl ? graphControl.view() : null,
     m: shown?.partners,
   };
@@ -260,7 +261,7 @@ function syncUrl() {
     // (from the bare address too: that is home, and Back should land there)
     const step = graphOf(was) !== graphOf(next) || (was?.p || null) !== (next?.p || null) || (was?.c || null) !== (next?.c || null);
     if (step) history.pushState(null, '', url);
-    else history.replaceState(history.state, '', url); // (keeps the panel filter, below)
+    else history.replaceState(history.state, '', url); // (the panel filter, typed: no new step)
   }, 250);
 }
 // which graph a link shows, regardless of how it is being looked at
@@ -555,27 +556,13 @@ for (const tab of document.querySelectorAll('[data-tab]')) {
     updatePanel();
   };
 }
-// The filter goes with the history step it was typed in (in its state, not the link), so
-// Back and Forward bring it back with the person.
-function keepFilter() {
-  history.replaceState({ ...history.state, filter: $('panel-filter').value }, '', location.href);
-}
-function restoreFilter() {
-  const filter = history.state?.filter || '';
-  if (!graphControl?.hasSelection() || $('panel-filter').value === filter) return;
-  $('panel-filter').value = filter;
-  updatePanel();
-}
-$('panel-filter').oninput = () => {
-  updatePanel();
-  keepFilter();
-};
+// (the filter is in the link, f=: updatePanel rewrites the address a moment after typing)
+$('panel-filter').oninput = () => updatePanel();
 $('panel-filter').onkeydown = (e) => {
   if (e.key === 'Escape' && $('panel-filter').value) {
     e.stopPropagation(); // clear the filter first, the selection on the next Esc
     $('panel-filter').value = '';
     updatePanel();
-    keepFilter();
   }
 };
 $('sheet-handle').onclick = () => {
@@ -1353,6 +1340,12 @@ async function openShareHash() {
     renderGroups();
   }
   updatePanel();
+  // the panel's filter, once the person it filters is in (picking someone clears it)
+  const filter = (state.p && state.f) || '';
+  if ($('panel-filter').value !== filter) {
+    $('panel-filter').value = filter;
+    updatePanel();
+  }
   syncUrl(); // the layout can outlast the address's first rewrite, which had no view yet
   return true;
 }
@@ -1382,7 +1375,7 @@ function onNavigate() {
   if (navigating) return;
   navigating = true;
   setTimeout(() => (navigating = false));
-  openShareHash().then(restoreFilter);
+  openShareHash();
 }
 window.addEventListener('hashchange', onNavigate);
 window.addEventListener('popstate', onNavigate);
