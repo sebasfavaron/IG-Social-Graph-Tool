@@ -1477,6 +1477,20 @@ $('publish-go').onclick = () => {
   $('publish-dialog').close();
   share();
 };
+// Publishing a name for the first time claims it (db/graphs.sql save_graph), so a browser
+// with no key for it yet publishes only while instagram.com is logged in as that account.
+// It stops publishing someone else's crawl opened from a link; a script calling the
+// database itself still can, since its password is in this page.
+async function loggedInAs() {
+  if (inExtension) {
+    const res = await chrome.runtime.sendMessage({ type: 'whoami' });
+    if (!res?.ok) throw new Error(res?.error || 'No response from the extension');
+    return res.data.username;
+  }
+  if (!bridged) throw new Error('publishing needs the extension');
+  if (bridgeVersion() < 5) throw new Error('publishing needs a newer extension');
+  return (await ask('whoami')).username;
+}
 async function share() {
   const button = $('share');
   clearTimeout(shareFlash);
@@ -1489,6 +1503,12 @@ async function share() {
     if (missing.length) {
       button.disabled = true;
       button.textContent = t('uploading');
+      const claims = missing.filter(([o]) => !publishedHere(o));
+      if (claims.length) {
+        const who = await loggedInAs();
+        const other = claims.find(([o]) => o !== who);
+        if (other) throw new Error(`logged in to Instagram as @${who}, not @${other[0]}`);
+      }
       for (const [owner, crawl] of missing) {
         await saveGraph({
           owner,

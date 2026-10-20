@@ -10,10 +10,10 @@
 // Only the requests below pass; deleting the data stays in the popup. A new kind of
 // request needs the crawler (background.js) updated anyway, so it is added here then too.
 // Version 2 added env and the changed keys; version 3 the list, thumbs and legacyKey;
-// version 4 update, in place of refreshProfiles.
+// version 4 update, in place of refreshProfiles; version 5 whoami.
 (() => {
-  const VERSION = 4;
-  const CRAWLER = new Set(['getState', 'env', 'start', 'resume', 'pause', 'update', 'profilePhoto']);
+  const VERSION = 5;
+  const CRAWLER = new Set(['getState', 'env', 'start', 'resume', 'pause', 'update', 'profilePhoto', 'whoami']);
   const root = document.documentElement;
   // two copies of the extension installed: the first one answers, the other stays out
   if (root.dataset.igsgBridge) return;

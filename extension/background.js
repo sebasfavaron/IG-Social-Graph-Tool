@@ -396,6 +396,15 @@ const handlers = {
     const settings = await chrome.action.getUserSettings?.().catch(() => null);
     return { loggedIn: !!cookie?.value, pinned: settings ? !!settings.isOnToolbar : null, version: chrome.runtime.getManifest().version };
   },
+  // who is logged in on instagram.com right now: the site publishes a graph only under that
+  // name (viewer.js share). The crawl already knows the name when the account is the same.
+  async whoami() {
+    const cookie = await chrome.cookies.get({ url: IG_ORIGIN, name: 'ds_user_id' });
+    if (!cookie?.value) throw new Error('Not logged in to instagram.com in this browser.');
+    if (state?.viewer?.pk === cookie.value) return { username: state.viewer.username };
+    const { username } = await detectViewer();
+    return { username };
+  },
   async start({ settings }) {
     const viewer = await detectViewer();
     state = initialState(viewer, saneSettings(settings));
