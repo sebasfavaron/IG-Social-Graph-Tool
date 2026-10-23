@@ -56,9 +56,8 @@ export function paint() {
   $('crawl-start').classList.toggle('primary', !has);
   $('crawl-resume').hidden = !has || !['paused', 'error', 'cooldown'].includes(s.status);
   $('crawl-pause').hidden = !has || !['running', 'cooldown'].includes(s.status);
-  // crawls made before names and photos were kept have none
-  $('crawl-profiles').hidden = !has || s.status !== 'done' || s.profiles === undefined;
-  $('crawl-profiles').textContent = s?.profiles ? t('p.refreshProfiles') : t('p.getProfiles');
+  // an extension before bridge 4 does not know the request; the update link above says so
+  $('crawl-refresh').hidden = !has || s.status !== 'done' || bridgeVersion() < 4;
   $('crawl-see').hidden = !(stoppedHere && has && !going(s));
   $('crawl-see').textContent = t(s?.status === 'done' ? 'c.see' : 'c.seeSoFar');
   $('crawl-update').hidden = !newerVersion;
@@ -127,7 +126,7 @@ export async function startCrawlPanel({ state } = {}) {
   };
   $('crawl-resume').onclick = () => act(send('resume', { settings: settings() }));
   $('crawl-pause').onclick = () => act(send('pause'));
-  $('crawl-profiles').onclick = () => act(send('refreshProfiles'));
+  $('crawl-refresh').onclick = () => act(send('update'));
   $('crawl-login').href = 'https://www.instagram.com/';
   $('crawl-see').onclick = () => location.reload();
   $('crawl-update').href = `${SHARE_BASE_URL}install.html`;

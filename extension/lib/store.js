@@ -1,3 +1,6 @@
+import { decodeGraph } from './share.js';
+import { diffGraphs } from './history.js';
+
 // Shared storage: a Neon Postgres database (db/graphs.sql), unencrypted. Each shared crawl
 // is one row in `graphs`, keyed by its owner; each account seen in any of them is one row
 // in `people`, so someone in two friends' graphs is stored once.
@@ -176,12 +179,31 @@ export async function publishedAsIs({ owner, g, ids, profiles = {}, photos = new
   return !!saved && saved === (await fingerprint(g, peopleRows(ids, profiles, photos)));
 }
 
+// What publishing g changes in the owner's stored graph (history.js), for the database's
+// list of changes. null when the stored one cannot be read from here: the database then
+// writes down a gap, and playback stops there.
+const MAX_CHANGES_BYTES = 3.5 * 1024 * 1024; // under save_graph's 4 MB
+async function changesSince(owner, g, history, fetchImpl) {
+  try {
+    const rows = await sharesQuery('select data, updated_at from get_graph($1, $2, $3)', [owner, ...viewerParams()], fetchImpl);
+    if (!rows.length) return null;
+    const [[stored, updatedAt]] = rows;
+    if (stored === g) return [];
+    const [before, after] = await Promise.all([decodeGraph(stored), decodeGraph(g)]);
+    const changes = diffGraphs(before, after, { history, since: new Date(updatedAt).getTime() });
+    return JSON.stringify(changes).length > MAX_CHANGES_BYTES ? null : changes;
+  } catch (_) {
+    return null;
+  }
+}
+
 // Saves an owner's crawl and the people in it (only those in ids). onlyIfMissing: for
 // copying an old link over; a graph already stored stays unless fromShare (the old
 // link's share id) was made after it, and people only gain what they lack.
+// history: the crawl's own list of changes (crawler.js), for when each one was noticed.
 // -> whether the graph was saved (false: a newer one was there already).
 export async function saveGraph(
-  { owner, g, ids, profiles = {}, photos = new Map(), onlyIfMissing = false, fromShare = null },
+  { owner, g, ids, profiles = {}, photos = new Map(), onlyIfMissing = false, fromShare = null, history = [] },
   { fetchImpl = fetch } = {}
 ) {
   const rows = peopleRows(ids, profiles, photos);
@@ -189,9 +211,10 @@ export async function saveGraph(
   if (!onlyIfMissing && readSaved(owner) === print) return true;
   // copying an old link over is not publishing: it carries no key, and claims nothing
   const key = onlyIfMissing ? null : ownerKey(owner);
+  const changes = onlyIfMissing ? null : await changesSince(owner, g, history, fetchImpl);
   const [[saved]] = await sharesQuery(
-    'select save_graph($1, $2, $3, $4, $5, $6, $7::jsonb)',
-    [owner, g, onlyIfMissing, fromShare, ids.size, key, JSON.stringify([...ids])],
+    'select save_graph($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)',
+    [owner, g, onlyIfMissing, fromShare, ids.size, key, JSON.stringify([...ids]), changes && JSON.stringify(changes)],
     fetchImpl
   );
   if (key) store('me', owner); // publishing is what lets this browser see the network
@@ -238,6 +261,13 @@ export async function listGraphs({ fetchImpl = fetch } = {}) {
 export async function loadGraph(owner, { fetchImpl = fetch } = {}) {
   const rows = await sharesQuery('select data from get_graph($1, $2, $3)', [owner, ...viewerParams()], fetchImpl);
   return rows[0]?.[0] ?? null;
+}
+
+// What each republish of the owner's graph changed, oldest first (history.js graphAt plays
+// them back), when the graph is in this browser's network: [{ at: ms, changes }]
+export async function loadHistory(owner, { fetchImpl = fetch } = {}) {
+  const rows = await sharesQuery('select at, changes from get_graph_history($1, $2, $3)', [owner, ...viewerParams()], fetchImpl);
+  return rows.map(([at, changes]) => ({ at: new Date(at).getTime(), changes: Array.isArray(changes) ? changes : null }));
 }
 
 // The owner's friend-group names ({ anchor username: name }, groupNames.js), when the
