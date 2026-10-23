@@ -1,5 +1,5 @@
 import { SHARE_BASE_URL } from './lib/share.js';
-import { IG_APP_ID, STATUS, estimateRemaining, initialState, progress, startProfileRefresh, step, tickClock } from './lib/crawler.js';
+import { IG_APP_ID, STATUS, estimateRemaining, initialState, progress, startUpdate, step, tickClock, updateProgress } from './lib/crawler.js';
 
 // The service worker owns the crawl state; popup and viewer only send messages.
 // Requests are made from inside an instagram.com tab (chrome.scripting) so they carry
@@ -224,7 +224,7 @@ async function largePhoto(username) {
 }
 
 // Downloads the photos still missing or smaller than THUMB_PX. A URL that failed once is
-// not retried until a profile refresh brings a new one.
+// not retried until an update brings a new one.
 async function downloadThumbs() {
   await load();
   if (thumbing || !state?.profiles) return;
@@ -306,7 +306,7 @@ async function runLoop() {
         // jitter so the requests do not tick like a metronome
         await save();
         // the followers list is in: their photos can come down while the crawl goes on
-        if (state.phase !== 'followers' && !state.refresh) downloadThumbs();
+        if (state.phase !== 'followers' && state.update?.stage !== 'followers') downloadThumbs();
         await sleep(result.wait * (0.75 + Math.random() * 0.5));
         continue;
       }
@@ -368,8 +368,8 @@ function summary() {
     startedAt: state.startedAt,
     updatedAt: state.updatedAt,
     remaining: estimateRemaining(state),
-    refreshing: !!state.refresh,
-    profiles: Object.keys(state.profiles || {}).length,
+    update: updateProgress(state),
+    lastUpdate: state.updates?.at(-1) || null,
     ...progress(state),
   };
 }
@@ -410,12 +410,10 @@ const handlers = {
     await setStatus(STATUS.RUNNING);
     return summary();
   },
-  // Real names and photos for a crawl made before they were kept: the followers list
-  // again (one request per 50), then the photos.
-  async refreshProfiles() {
-    if (!state) throw new Error('Nothing to refresh.');
-    startProfileRefresh(state);
-    state.error = null;
+  // A finished crawl brought up to date in place (crawler.js, startUpdate).
+  async update() {
+    if (state?.phase !== 'done') throw new Error('Nothing to refresh.');
+    if (!state.update) startUpdate(state);
     await setStatus(STATUS.RUNNING);
     return summary();
   },

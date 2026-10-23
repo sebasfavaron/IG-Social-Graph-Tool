@@ -1,14 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, step, toGraph, classify, startProfileRefresh } from '../extension/lib/crawler.js';
+import { initialState, step, toGraph, classify, startUpdate, updateProgress } from '../extension/lib/crawler.js';
 import { pruneLoneNodes } from '../extension/lib/prune.js';
+import { diffGraphs, graphAt } from '../extension/lib/history.js';
 
 // Fake Instagram: me(1) followed by a(2), b(3), c(4), shop(5). Followers paginate 2 per page.
 // "followed by" lists: a <- b,c ; b <- a ; c <- a,b (paginated) ; shop <- nobody
-const users = { 2: 'a', 3: 'b', 4: 'c', 5: 'shop' };
-const mutuals = { 2: [['b', 'c']], 3: [['a']], 4: [['a'], ['b']], 5: [[]] };
+const USERS = { 2: 'a', 3: 'b', 4: 'c', 5: 'shop' };
+const MUTUALS = { 2: [['b', 'c']], 3: [['a']], 4: [['a'], ['b']], 5: [[]] };
 
-function fakeApi({ failOn = () => null } = {}) {
+function fakeApi({ failOn = () => null, users = USERS, mutuals = MUTUALS } = {}) {
   const calls = [];
   return {
     calls,
@@ -154,16 +155,108 @@ test('names, photos and flags come along with the lists at no extra request', as
   assert.equal(state.profiles.shop.verified, true);
 });
 
-test('a profile refresh on an old crawl fills profiles and leaves the graph alone', async () => {
+const edges = (state) => toGraph(state).links.map((l) => `${l.source}>${l.target}`).sort();
+
+// A month later: shop unfollowed, d(6) followed, a stopped following c, and b now follows d.
+const LATER_USERS = { 6: 'd', 2: 'a', 3: 'b', 4: 'c' };
+const LATER_MUTUALS = { 6: [['b']], 2: [['b', 'c']], 3: [['a']], 4: [['b']] };
+
+test('an update brings the graph to what a fresh crawl would find', async () => {
   const state = initialState(me);
   await runToEnd(state, fakeApi());
-  delete state.profiles; // a crawl from before profiles were kept
-  const links = toGraph(state).links.length;
-  const api = fakeApi();
-  startProfileRefresh(state);
+  const later = { users: LATER_USERS, mutuals: LATER_MUTUALS };
+  const api = fakeApi(later);
+  startUpdate(state);
   assert.deepEqual(await runToEnd(state, api), { done: true });
-  assert.equal(api.calls.length, 2); // the two pages of the followers list, nothing else
-  assert.equal(state.refresh, null);
-  assert.deepEqual(Object.keys(state.profiles).sort(), ['a', 'b', 'c', 'shop']);
-  assert.equal(toGraph(state).links.length, links);
+
+  const fresh = initialState(me);
+  await runToEnd(fresh, fakeApi(later));
+  assert.deepEqual(edges(state), edges(fresh));
+  assert.deepEqual(Object.keys(state.nodes).sort(), Object.keys(fresh.nodes).sort());
+  assert.equal(state.update, null);
+  assert.deepEqual({ added: state.updates[0].added, removed: state.updates[0].removed }, { added: 1, removed: 1 });
+  // the new follower is checked first
+  assert.ok(api.calls[2].includes('/6/mutual_followers'));
+  // names and photos come fresh with the list
+  assert.equal(state.profiles.d.name, 'D Person');
+});
+
+test('an update stopped half way leaves a whole graph: checked followers new, the rest as before', async () => {
+  const state = initialState(me);
+  await runToEnd(state, fakeApi());
+  const before = new Set(edges(state));
+  const api = fakeApi({ users: LATER_USERS, mutuals: LATER_MUTUALS });
+  startUpdate(state);
+  // 2 list pages, then d (new) and the first old one
+  for (let i = 0; i < 4; i++) await step(state, api);
+  assert.equal(updateProgress(state).done, 2);
+  const now = edges(state);
+  assert.ok(now.includes('d>me') && now.includes('b>d')); // d is in, with its connections
+  assert.ok(!now.some((e) => e.startsWith('shop>'))); // shop is out
+  // c has not been checked again: a > c from the old crawl is still there
+  assert.ok(before.has('a>c') && now.includes('a>c'));
+});
+
+test('a follower whose check fails during an update keeps the links it had', async () => {
+  const state = initialState(me);
+  await runToEnd(state, fakeApi());
+  const api = fakeApi({ failOn: (p) => (p.includes('/2/mutual_followers') ? { status: 500, json: null } : null) });
+  startUpdate(state);
+  assert.deepEqual(await runToEnd(state, api), { done: true });
+  assert.ok(edges(state).includes('b>a'));
+});
+
+test('a followers list cut short by Instagram removes nobody', async () => {
+  const state = initialState(me);
+  await runToEnd(state, fakeApi());
+  const api = fakeApi({ users: { 2: 'a' }, mutuals: MUTUALS });
+  startUpdate(state);
+  assert.deepEqual(await runToEnd(state, api), { done: true });
+  assert.equal(state.updates[0].removed, 0);
+  assert.ok(edges(state).includes('shop>me'));
+  assert.equal(Object.keys(state.followers).length, 4);
+});
+
+test('a follower who changed username keeps their place under the new name', async () => {
+  const state = initialState(me);
+  await runToEnd(state, fakeApi());
+  const api = fakeApi({ users: { ...USERS, 2: 'a2' }, mutuals: { ...MUTUALS, 3: [['a2']], 4: [['a2'], ['b']] } });
+  startUpdate(state);
+  await runToEnd(state, api);
+  const now = edges(state);
+  assert.ok(now.includes('a2>me') && now.includes('a2>b') && now.includes('b>a2'));
+  assert.ok(!now.some((e) => e.split('>').includes('a')));
+});
+
+test('an update writes down only what changed, and those times date the published changes', async () => {
+  const state = initialState(me);
+  await runToEnd(state, fakeApi());
+  const before = toGraph(state);
+  const crawledAt = Date.now();
+  await new Promise((r) => setTimeout(r, 2));
+  startUpdate(state);
+  await runToEnd(state, fakeApi({ users: LATER_USERS, mutuals: LATER_MUTUALS }));
+  // only what changed is written: shop's link out, d's link and b > d in, a > c out
+  assert.deepEqual(state.history.map(([, op, a, b]) => `${op}${a}>${b}`).sort(), ['+b>d', '+d>me', '-a>c', '-shop>me'].sort());
+  // what a republish would store: the published graphs' difference, at the crawl's times
+  const after = toGraph(state);
+  const publishedAt = Date.now() + 1000;
+  const changes = diffGraphs(before, after, { history: state.history, since: crawledAt, now: publishedAt });
+  const noticed = Object.fromEntries(state.history.map(([t, op, a, b]) => [`${op}${a}>${b}`, t]));
+  for (const [t, op, s, d] of changes) {
+    if (s === 'me') assert.equal(t, state.history.find(([, o, a]) => o === op && a === d)[0]); // me > d comes with d's first change
+    else assert.equal(t, noticed[`${op}${s}>${d}`]);
+  }
+  const versions = [{ at: publishedAt, changes }];
+  const linksOf = (g) => g.links.map((l) => `${l.source}>${l.target}`).sort();
+  assert.deepEqual(linksOf(graphAt(after, versions, crawledAt)), linksOf(before));
+  assert.deepEqual(linksOf(graphAt(after, versions, publishedAt)), linksOf(after));
+});
+
+test('an update that finds nothing new writes nothing', async () => {
+  const state = initialState(me);
+  await runToEnd(state, fakeApi());
+  startUpdate(state);
+  await runToEnd(state, fakeApi());
+  assert.deepEqual(state.history || [], []);
 });

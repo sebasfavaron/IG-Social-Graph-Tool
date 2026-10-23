@@ -14,7 +14,9 @@ Not technical? [**The install page**](https://sebasfavaron.github.io/IG-Social-G
 4. Leave it running. The panel shows progress and the time left, measured from the pace so far (Instagram's pauses included); the popup gives the same in one line and the icon badge shows the percentage. The crawl runs in the extension: you can close the site, pause and resume, or restart the browser, and progress is saved.
 5. The site reads your crawl from the extension and draws it. There, **Publish & copy link** makes your graph visible to your network (it asks first, in warning colours) and copies a short link.
 
-The crawl also keeps everyone's real name and profile photo, which come with the same lists at no extra request. A crawl made before that can get them with **Get names & photos** in the site's mapping panel: your followers list again, about one request per 50 followers.
+The crawl also keeps everyone's real name and profile photo, which come with the same lists at no extra request.
+
+**Update** in the site's mapping panel brings a finished graph up to date without wiping it. It lists your followers again (about one request per 50): whoever followed you since joins, whoever unfollowed leaves, and names and photos come fresh. Then it checks everyone's connections again, new followers first, then the ones checked longest ago, so it takes about as long as the first crawl. Each follower's connections change only once their check is complete, so you can pause or close it at any point, and publish meanwhile: the graph is still whole. If Instagram returns less than half the followers it knew, nobody is removed: that is Instagram cutting the list short, not people leaving.
 
 Requests go from an instagram.com tab with your own session, and the data stays in the extension's local storage. Nothing is sent anywhere else.
 
@@ -39,13 +41,15 @@ Requests go from an instagram.com tab with your own session, and the data stays 
 
 The database keeps one graph per person and one row per Instagram account. Someone who is in two friends' graphs is stored once, and sharing again replaces your graph instead of adding a copy (sharing twice without changes uploads nothing). The link always opens your latest share.
 
+**A published graph keeps its history.** Each republish stores only what changed since the last one (the follows added and removed, `graph_changes` in [`db/graphs.sql`](./db/graphs.sql)), so anyone who can open a graph can also see it as it was on an earlier day: today's graph with the later changes undone ([`lib/history.js`](./extension/lib/history.js)). Each change is dated when the extension's **Update** noticed it, or else when it was published. A republish from an older version of the site cannot say what changed; it stores a gap, and playback stops there. Unpublishing deletes the history with the graph.
+
 **Only the browser that published a graph can replace or unpublish it.** The first publish makes a random key that stays in that browser (the database keeps only its hash); **Unpublish** on your own graph deletes it, and the names and photos only it had, from the database. Clearing the browser's data for the extension loses the key, and then only whoever runs the database can free the graph.
 
 **Publish yours to see the others.** Graphs are seen among people who published their own. Two graphs are linked when their owners follow each other (one way or both); your network is every graph you can reach through such links, friends of friends included, and that is what the home list, links and Explore show you. Each side of a link is vouched for by the other person's own crawl, so a made-up account links to nobody and only ever sees itself. Before you publish, a link to someone's graph shows who published it and how many people it holds, and how to get in.
 
 The site keeps your key (in this browser's storage for the site). A key can also be handed over with a personal link (`#me=<you>&mk=<key>`), which the site adopts and removes from the address bar; the extension's own page still passes it along to **Explore data**.
 
-**The extension only crawls.** Viewing, publishing, unpublishing and the network all live on the site: on the project's site the extension adds a small bridge ([`extension/bridge.js`](./extension/bridge.js)) through which the page reads the local crawl and photos and asks the crawler for things (get state, start, pause, resume, refresh names, a larger photo). New features ship with the site, without anyone updating the extension; only changes to the crawler itself need that.
+**The extension only crawls.** Viewing, publishing, unpublishing and the network all live on the site: on the project's site the extension adds a small bridge ([`extension/bridge.js`](./extension/bridge.js)) through which the page reads the local crawl and photos and asks the crawler for things (get state, start, pause, resume, update, a larger photo). New features ship with the site, without anyone updating the extension; only changes to the crawler itself need that.
 
 **What is still public.** The database password is in the page's code, so the rules live in the database functions ([`db/graphs.sql`](./db/graphs.sql)). Without accounts, anyone can publish under a username nobody has claimed yet; a real name and profile photo can be read by a network that lists that username (Instagram shows those to anyone anyway), but who follows whom stays inside its network, and nobody outside can rename anyone. Uploads stop at 2 MB per graph, 60 graphs an hour and 400 MB in total, which keeps strangers from filling the free tier.
 
@@ -79,7 +83,7 @@ Every link to the site shows the same preview card in chats ([`extension/og.png`
 - **Followers to check** (Settings) caps the second phase, handy for a quick first look. Raise it later and Resume to continue.
 - **"You follow" only counts people who follow at least one of your followers**: Instagram's "followed by" lists, the only place the crawl learns whom you follow, name no one else.
 - **Group names** are saved with the graph in the database (`set_group_names`, only from the browser that published it), each with its group's most connected person, so a later crawl that renumbers the groups keeps every name on its group. Before publishing they wait in that browser and go up with the graph. Old links' `n=` still shows its names.
-- **Photos** are saved as small copies when the crawl runs, because Instagram's photo links expire. If one fails, **Refresh names & photos** tries again with fresh links.
+- **Photos** are saved as small copies when the crawl runs, because Instagram's photo links expire. If one fails, **Update** tries again with fresh links.
 
 ### Develop
 

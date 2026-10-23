@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { adoptIdentity, takeIdentity, listGraphs, loadGraph, loadGroupNames, loadPeople, me, publishedHere, saveGraph, saveGroupNames, teaser, unpublishGraph } from '../extension/lib/store.js';
-import { buildHash, parseHash } from '../extension/lib/share.js';
+import { adoptIdentity, takeIdentity, listGraphs, loadGraph, loadHistory, loadGroupNames, loadPeople, me, publishedHere, saveGraph, saveGroupNames, teaser, unpublishGraph } from '../extension/lib/store.js';
+import { buildHash, decodeGraph, encodeGraph, parseHash } from '../extension/lib/share.js';
+import { graphAt } from '../extension/lib/history.js';
 import { mergeGraphs, ownGraph } from '../extension/lib/merge.js';
 
 const jpeg = (fill, n) => `data:image/jpeg;base64,${Buffer.alloc(n, fill).toString('base64')}`;
@@ -16,13 +17,14 @@ function fakeNeon() {
   let clock = 10;
   const people = new Map();
   const groupNames = new Map(); // owner -> { anchor: name }
+  const history = []; // { owner, at, changes }
   const calls = [];
   const fetchImpl = async (url, init) => {
     const { query, params } = JSON.parse(init.body);
     calls.push(query);
     const ok = (rows) => new Response(JSON.stringify({ rows }));
-    if (query === 'select save_graph($1, $2, $3, $4, $5, $6, $7::jsonb)') {
-      const [owner, data, onlyIfMissing, fromShare, count, key, members] = params;
+    if (query === 'select save_graph($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)') {
+      const [owner, data, onlyIfMissing, fromShare, count, key, members, changes] = params;
       calls.members = JSON.parse(members);
       if (keys.has(owner) && (onlyIfMissing || keys.get(owner) !== key)) {
         if (onlyIfMissing) return ok([[false]]);
@@ -32,8 +34,10 @@ function fakeNeon() {
       counts.set(owner, count);
       const made = shareDates.get(fromShare);
       if (onlyIfMissing && graphs.has(owner) && !(made && made > dates.get(owner))) return ok([[false]]);
+      const old = graphs.get(owner);
       graphs.set(owner, data);
       dates.set(owner, onlyIfMissing && made ? made : ++clock);
+      if (old !== undefined && old !== data) history.push({ owner, at: dates.get(owner) * 1000, changes: changes && !onlyIfMissing ? JSON.parse(changes) : null });
       return ok([[true]]);
     }
     if (query === 'select unpublish($1, $2)') {
@@ -69,6 +73,10 @@ function fakeNeon() {
     }
     if (query === 'select get_group_names($1, $2, $3)') return ok([[graphs.has(params[0]) ? groupNames.get(params[0]) || {} : null]]);
     if (query === 'select data from get_graph($1, $2, $3)') return ok(graphs.has(params[0]) ? [[graphs.get(params[0])]] : []);
+    if (query === 'select data, updated_at from get_graph($1, $2, $3)')
+      return ok(graphs.has(params[0]) ? [[graphs.get(params[0]), new Date(dates.get(params[0]) * 1000).toISOString()]] : []);
+    if (query === 'select at, changes from get_graph_history($1, $2, $3)')
+      return ok(history.filter((h) => h.owner === params[0]).map((h) => [new Date(h.at).toISOString(), h.changes]));
     if (query.includes('from graph_teaser($1)')) {
       const o = params[0];
       return ok(graphs.has(o) ? [[o, counts.get(o), people.get(o)?.n || null, null, null, graphs.size]] : []);
@@ -81,7 +89,7 @@ function fakeNeon() {
     }
     return new Response(JSON.stringify({ message: 'permission denied' }), { status: 400 });
   };
-  return { fetchImpl, calls, graphs, people };
+  return { fetchImpl, calls, graphs, people, history };
 }
 
 const profiles = {
@@ -275,4 +283,60 @@ test('group names live with the graph: its publisher names them, the network rea
   } finally {
     delete globalThis.localStorage;
   }
+});
+
+// ---- history: what each republish changed, played back -----------------------------------
+
+const graphOf = (owner, links) => ({ username: owner, nodes: [...new Set(links.flat())].map((id) => ({ id })), links: links.map(([source, target]) => ({ source, target })) });
+const pairs = (graph) => graph.links.map((l) => `${l.source}>${l.target}`).sort();
+
+test('each republish stores what it changed, and the published graph plays back to any earlier one', async (t) => {
+  const OWNER = 'hist.one';
+  const kept = new Map();
+  globalThis.localStorage = { getItem: (k) => kept.get(k) ?? null, setItem: (k, v) => kept.set(k, String(v)), removeItem: (k) => kept.delete(k) };
+  t.after(() => delete globalThis.localStorage);
+  const neon = fakeNeon();
+  const v1 = graphOf(OWNER, [['ana', OWNER], ['bo', OWNER], ['ana', 'bo'], [OWNER, 'ana']]);
+  const v2 = graphOf(OWNER, [['ana', OWNER], ['cy', OWNER], ['ana', 'cy'], [OWNER, 'ana']]);
+  const v3 = graphOf(OWNER, [['ana', OWNER], ['cy', OWNER], ['ana', 'cy'], ['cy', 'ana'], [OWNER, 'ana'], [OWNER, 'cy']]);
+  const ids = (g) => new Set(g.nodes.map((n) => n.id));
+  await saveGraph({ owner: OWNER, g: await encodeGraph(v1), ids: ids(v1) }, neon);
+  const t1 = Date.now();
+  await saveGraph({ owner: OWNER, g: await encodeGraph(v2), ids: ids(v2) }, neon);
+  // the crawl noticed cy following ana between the two publishes
+  const tick = () => new Promise((r) => setTimeout(r, 5));
+  await tick();
+  const noticed = Date.now();
+  await tick();
+  await saveGraph({ owner: OWNER, g: await encodeGraph(v3), ids: ids(v3), history: [[noticed, '+', 'cy', 'ana']] }, neon);
+  assert.equal(neon.history.length, 2); // the first publish starts the history
+
+  const versions = await loadHistory(OWNER, neon);
+  const today = await decodeGraph(neon.graphs.get(OWNER));
+  assert.deepEqual(pairs(graphAt(today, versions, Date.now())), pairs(v3));
+  assert.deepEqual(pairs(graphAt(today, versions, t1 - 1)), pairs(v1));
+  assert.deepEqual(graphAt(today, versions, t1 - 1).nodes.map((n) => n.id).sort(), ['ana', 'bo', OWNER].sort());
+  // cy > ana carries the moment the crawl saw it, not the publish
+  const third = versions[1].changes;
+  assert.ok(third.some(([t, op, s, d]) => t === noticed && op === '+' && s === 'cy' && d === 'ana'));
+  assert.deepEqual(pairs(graphAt(today, versions, noticed)).includes('cy>ana'), true);
+  assert.deepEqual(pairs(graphAt(today, versions, noticed - 1)).includes('cy>ana'), false);
+});
+
+test('the same graph again stores no change, and a save that cannot say what changed stops playback there', async (t) => {
+  const OWNER = 'hist.two';
+  const kept = new Map();
+  globalThis.localStorage = { getItem: (k) => kept.get(k) ?? null, setItem: (k, v) => kept.set(k, String(v)), removeItem: (k) => kept.delete(k) };
+  t.after(() => delete globalThis.localStorage);
+  const neon = fakeNeon();
+  const v1 = graphOf(OWNER, [['ana', OWNER]]);
+  const v2 = graphOf(OWNER, [['ana', OWNER], ['bo', OWNER]]);
+  await saveGraph({ owner: OWNER, g: await encodeGraph(v1), ids: new Set([OWNER, 'ana']) }, neon);
+  await saveGraph({ owner: OWNER, g: await encodeGraph(v1), ids: new Set([OWNER, 'ana']), profiles: { ana: { name: 'Ana' } } }, neon);
+  assert.equal(neon.history.length, 0);
+  neon.graphs.set(OWNER, 'not a graph this client can read');
+  await saveGraph({ owner: OWNER, g: await encodeGraph(v2), ids: new Set([OWNER, 'ana', 'bo']) }, neon);
+  const versions = await loadHistory(OWNER, neon);
+  assert.equal(versions[0].changes, null);
+  assert.equal(graphAt(v2, versions, 0), null);
 });

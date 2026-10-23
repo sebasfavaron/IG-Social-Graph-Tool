@@ -49,12 +49,13 @@ let shown = null; // what is on screen, for the share link
 // the extension's account while its crawl is going (running or waiting on Instagram), or
 // once it stopped while this page was open (crawlStale): what is on screen is part of it,
 // or older than it, and publishing it would replace the whole one. A crawl paused or
-// stopped on an error before the page opened can be published as it is.
+// stopped on an error before the page opened can be published as it is, and so can one
+// being updated (s.update): the graph stays whole while an update goes.
 let crawling = null;
 let crawlStale = false;
 function crawlState(s, stoppedHere) {
   crawlStale = stoppedHere;
-  crawling = s && (stoppedHere || ['running', 'cooldown'].includes(s.status)) ? s.viewer?.username ?? null : null;
+  crawling = s && (stoppedHere || (['running', 'cooldown'].includes(s.status) && !s.update)) ? s.viewer?.username ?? null : null;
   updateShareButton();
 }
 let encoded = null; // `shown` packed for the link; filled in the background
@@ -1495,6 +1496,8 @@ async function share() {
           ids: new Set(crawl.nodes.map((n) => n.id)),
           profiles,
           photos,
+          // when the extension's updates noticed each change, for the graph's history
+          history: owner === ownCrawlOwner ? local.crawl?.history : undefined,
         });
         storedOwners.add(owner);
         // the names given before publishing go up with it
@@ -1662,7 +1665,7 @@ const local = hasLocal ? await readLocal() : {};
 // the crawl's controls: on the site, through the bridge (the popup only opens the site)
 if (bridged) startCrawlPanel({ state: crawlState });
 if (hasLocal) {
-  if (['running', 'cooldown'].includes(local.crawl?.status)) crawling = local.crawl.viewer?.username ?? null;
+  if (['running', 'cooldown'].includes(local.crawl?.status) && !local.crawl.update) crawling = local.crawl.viewer?.username ?? null;
   ownCrawlOwner = local.crawl?.viewer?.username ?? null;
   profiles = ownProfiles = local.crawl?.profiles || {};
   photos = ownPhotos = photosFromThumbs(local.thumbs);

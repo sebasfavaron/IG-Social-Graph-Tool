@@ -2,6 +2,7 @@
 --
 --   graphs   one row per person who shared a crawl: the graph packed as in a #g= link
 --   people   one row per account seen in any shared crawl: real name, flags, photo
+--   graph_changes  what each republish changed, so a graph can be played back over time
 --
 -- A link is #o=<owner> (plus m=<other owners> to draw them together).
 --
@@ -50,13 +51,27 @@ create table if not exists people (
   photo_type text,
   updated_at timestamptz not null default now()
 );
+-- One row per republish that changed the graph: the follows it added and removed, each
+-- [time in ms, '+' or '-', source, target], oldest first. Today's graph with every change
+-- after a moment undone is the graph at that moment (the client's lib/history.js). The
+-- time is when the crawl noticed the change when it knows, otherwise the publish.
+-- changes null: the graph changed in a way nobody wrote down (an older client, an old link
+-- copied over), so playback cannot go back past it.
+create table if not exists graph_changes (
+  id bigserial primary key,
+  owner text not null,
+  at timestamptz not null default now(),
+  changes jsonb
+);
+create index if not exists graph_changes_owner on graph_changes (owner, at);
 revoke all on table graphs from public;
 revoke all on table people from public;
+revoke all on table graph_changes from public;
 
 create or replace function storage_left() returns bigint
 language sql stable security definer set search_path = public, pg_temp as $$
   select 400 * 1024 * 1024 - pg_total_relation_size('graphs') - pg_total_relation_size('people')
-    - pg_total_relation_size('shares')
+    - pg_total_relation_size('shares') - pg_total_relation_size('graph_changes')
 $$;
 
 -- members: JSON array of every username in the graph (null: leave what is there)
@@ -82,6 +97,20 @@ language sql immutable as $$
               else encode(sha256(convert_to(owner_key, 'UTF8')), 'hex') end
 $$;
 
+-- Writes down that a save replaced old_data with new_data (see graph_changes).
+create or replace function log_changes(owner_name text, old_data text, new_data text, changes jsonb)
+returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if old_data is null or old_data = new_data then
+    return; -- a first publish starts the history; the same graph again changes nothing
+  end if;
+  if changes is not null and (jsonb_typeof(changes) <> 'array' or length(changes::text) > 4 * 1024 * 1024) then
+    changes := null; -- not a list we can play back: a gap, rather than a lost publish
+  end if;
+  insert into graph_changes (owner, changes) values (owner_name, changes);
+end $$;
+
 -- Saves an owner's graph. Returns whether it was saved.
 -- owner_key: the publishing browser's secret. A graph that has one is replaced only with it
 -- (and an old link copied over never replaces it); one that has none takes this one.
@@ -90,18 +119,23 @@ $$;
 -- share was made, and the graph keeps the share's date, so old links opened in any order
 -- leave the newest one; without it (links to gists carry no date) only a missing graph
 -- is filled.
+-- changes: what this save changes in the stored graph (see graph_changes); null when the
+-- client does not say.
 drop function if exists save_graph(text, text, boolean);
 drop function if exists save_graph(text, text, boolean, text);
 drop function if exists save_graph(text, text, boolean, text, integer);
 drop function if exists save_graph(text, text, boolean, text, integer, text);
+drop function if exists save_graph(text, text, boolean, text, integer, text, jsonb);
 create or replace function save_graph(owner_name text, graph_data text, only_if_missing boolean default false,
                                       from_share text default null, people_count integer default null,
-                                      owner_key text default null, members jsonb default null)
+                                      owner_key text default null, members jsonb default null,
+                                      changes jsonb default null)
 returns boolean
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   made timestamptz;
   stored_hash text := (select g.key_hash from graphs g where g.owner = owner_name);
+  old_data text := (select g.data from graphs g where g.owner = owner_name);
 begin
   if owner_name !~ '^[A-Za-z0-9._]{1,30}$' then
     raise exception 'not an Instagram username: %', owner_name;
@@ -130,6 +164,7 @@ begin
     end if;
     if found then
       perform set_members(owner_name, members);
+      perform log_changes(owner_name, old_data, graph_data, null);
     end if;
     return found;
   end if;
@@ -140,6 +175,7 @@ begin
     on conflict (owner) do update set data = excluded.data, updated_at = now(), people = excluded.people,
       key_hash = coalesce(graphs.key_hash, excluded.key_hash);
   perform set_members(owner_name, members);
+  perform log_changes(owner_name, old_data, graph_data, changes);
   return true;
 end $$;
 
@@ -218,6 +254,7 @@ begin
     and not exists (select from graph_people gp where gp.owner <> owner_name and gp.username = p.username)
     and not exists (select from graphs g where g.owner <> owner_name and g.owner = p.username);
   delete from graph_people where owner = owner_name;
+  delete from graph_changes where owner = owner_name;
   delete from graphs where owner = owner_name;
   return true;
 end $$;
@@ -272,6 +309,17 @@ language sql stable security definer set search_path = public, pg_temp as $$
   select g.data, g.updated_at from graphs g
   join network(viewer, viewer_key) n on n.owner = g.owner
   where g.owner = owner_name
+$$;
+
+-- What each republish of an owner's graph changed, oldest first, when the graph is in the
+-- viewer's network; otherwise no rows.
+create or replace function get_graph_history(owner_name text, viewer text, viewer_key text)
+returns table (at timestamptz, changes jsonb)
+language sql stable security definer set search_path = public, pg_temp as $$
+  select c.at, c.changes from graph_changes c
+  join network(viewer, viewer_key) n on n.owner = c.owner
+  where c.owner = owner_name
+  order by c.at, c.id
 $$;
 
 -- The owner names their friend groups, with the key of the browser that published the
@@ -337,7 +385,9 @@ revoke all on function storage_left() from public;
 revoke all on function set_members(text, jsonb) from public;
 revoke all on function network(text, text) from public;
 revoke all on function graph_teaser(text) from public;
-revoke all on function save_graph(text, text, boolean, text, integer, text, jsonb) from public;
+revoke all on function log_changes(text, text, text, jsonb) from public;
+revoke all on function save_graph(text, text, boolean, text, integer, text, jsonb, jsonb) from public;
+revoke all on function get_graph_history(text, text, text) from public;
 revoke all on function unpublish(text, text) from public;
 revoke all on function list_graphs(text, text) from public;
 revoke all on function save_people(jsonb, boolean, text, text) from public;
@@ -345,7 +395,8 @@ revoke all on function get_graph(text, text, text) from public;
 revoke all on function get_people(text[], text, text) from public;
 revoke all on function set_group_names(text, text, jsonb) from public;
 revoke all on function get_group_names(text, text, text) from public;
-grant execute on function save_graph(text, text, boolean, text, integer, text, jsonb) to share_client;
+grant execute on function save_graph(text, text, boolean, text, integer, text, jsonb, jsonb) to share_client;
+grant execute on function get_graph_history(text, text, text) to share_client;
 grant execute on function unpublish(text, text) to share_client;
 grant execute on function list_graphs(text, text) to share_client;
 grant execute on function graph_teaser(text) to share_client;

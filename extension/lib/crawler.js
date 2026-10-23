@@ -7,8 +7,13 @@
 // One request per page; the caller sleeps between steps.
 //
 // Both lists also carry each account's real name, photo URL, private and verified flags;
-// they are kept in state.profiles at no extra request. A crawl made before that can
-// fill them with a "profiles" pass: the followers list again, about one request per 50.
+// they are kept in state.profiles at no extra request.
+//
+// A finished crawl is brought up to date in place (startUpdate): the followers list
+// again, then every follower's "followed by" list again. The graph stays whole the
+// whole time, so the update can stop anywhere and what is on screen is still a graph.
+// Every link an update adds or takes away is written to state.history, so the graph
+// on any earlier day can be rebuilt from today's (lib/history.js) without a copy of it.
 
 export const IG_APP_ID = '936619743392459';
 
@@ -84,16 +89,209 @@ function keepProfile(state, user) {
   };
 }
 
-// Starts a pass over the followers list that only refreshes profiles; step() runs it
-// before anything else and then returns to where the crawl was.
-export function startProfileRefresh(state) {
-  state.refresh = { cursor: null, retries: 0 };
-}
-
 function addLink(state, source, target) {
   state.nodes[source] = true;
   state.nodes[target] = true;
   state.links.push([source, target]);
+}
+
+// state.history: [time, op, a, b], oldest first. '+' and '-' are the link a -> b coming
+// and going, '~' is account a renamed to b. Only updates write it: the first crawl is
+// the starting point, and what it found is the graph with every entry undone.
+function record(state, op, a, b, at = Date.now()) {
+  (state.history ??= []).push([at, op, a, b]);
+}
+
+const pairKey = (s, t) => `${s}\u0000${t}`;
+
+// Nodes are whoever is in a link, plus the logged user: after links are taken away,
+// someone who is in none of them anymore leaves the graph.
+function rebuildNodes(state) {
+  state.nodes = { [state.viewer.username]: true };
+  for (const [source, target] of state.links) {
+    state.nodes[source] = true;
+    state.nodes[target] = true;
+  }
+}
+
+// ---- Update ----------------------------------------------------------------------
+// Two stages, both resumable after a pause or a reload:
+//   followers  the list again. New followers join with their  follower -> me  link; the
+//              ones missing from it leave, with every link that points at them. Names
+//              and photos come fresh with it.
+//   mutuals    each follower's "followed by" list again: new followers first, then the
+//              ones checked longest ago. Their incoming links are swapped for the new
+//              list only once it is read to the end; a follower that fails keeps the old.
+// If the list comes back with less than half the followers known, nobody is removed:
+// that is Instagram cutting the list short, not half the followers leaving.
+
+export function startUpdate(state) {
+  state.update = {
+    stage: 'followers',
+    cursor: null,
+    retries: 0,
+    seen: [], // follower pks in the order the list gave them (newest first)
+    added: [],
+    removed: 0,
+    queue: [], // pks to check again
+    pos: 0,
+    current: null, // { pk, cursor, retries, found: [usernames] }
+    startedAt: Date.now(),
+    paceBase: null, // set when the checks start
+    priorPace: crawlPace(state), // ms per follower of the crawl being updated
+  };
+  state.error = null;
+}
+
+// The pace the crawl measured, to estimate an update before it has measured its own.
+function crawlPace(state) {
+  const base = state.paceBase;
+  if (!base) return null;
+  const sampled = progress(state).done - base.done;
+  return sampled >= MIN_SAMPLE ? ((state.activeMs || 0) - base.activeMs) / sampled : null;
+}
+
+export function updateProgress(state) {
+  const u = state.update;
+  if (!u) return null;
+  return {
+    stage: u.stage,
+    listed: u.seen.length,
+    done: u.pos,
+    total: u.queue.length,
+    added: u.added.length,
+    removed: u.removed,
+  };
+}
+
+async function updateStep(state, api, delay) {
+  const u = state.update;
+  const me = state.viewer.username;
+
+  if (u.stage === 'followers') {
+    const res = await api.get(followersPath(state, u.cursor));
+    state.requests++;
+    const verdict = classify(res);
+    if (verdict.kind === 'fatal') return { fatal: verdict.reason };
+    if (verdict.kind === 'cooldown') return { cooldown: true };
+    if (verdict.kind !== 'ok') {
+      state.error = verdict.reason || 'HTTP error';
+      if (++u.retries >= MAX_RETRIES) return { fatal: state.error };
+      return { wait: delay * 2 };
+    }
+    const seen = new Set(u.seen);
+    for (const user of res.json.users || []) {
+      const pk = String(user.pk || user.id);
+      if (seen.has(pk)) continue;
+      seen.add(pk);
+      u.seen.push(pk);
+      keepProfile(state, user);
+      if (!state.followers[pk]) {
+        state.followers[pk] = { username: user.username, done: false };
+        u.added.push(pk);
+        addLink(state, user.username, me);
+        record(state, '+', user.username, me);
+      } else if (state.followers[pk].username !== user.username) {
+        renameAccount(state, state.followers[pk].username, user.username);
+        state.followers[pk].username = user.username;
+      }
+    }
+    u.retries = 0;
+    state.error = null;
+    u.cursor = res.json.next_max_id || null;
+    if (!u.cursor) finishListing(state);
+    return { wait: delay };
+  }
+
+  if (!u.current) {
+    if (u.pos >= u.queue.length) {
+      state.update = null;
+      (state.updates ??= []).push({ startedAt: u.startedAt, at: Date.now(), added: u.added.length, removed: u.removed });
+      return { done: true };
+    }
+    u.current = { pk: u.queue[u.pos], cursor: null, retries: 0, found: [] };
+  }
+  const c = u.current;
+  const next = () => {
+    u.pos++;
+    u.current = null;
+  };
+  const res = await api.get(mutualsPath(c.pk, c.cursor));
+  state.requests++;
+  const verdict = classify(res);
+  if (verdict.kind === 'fatal') return { fatal: verdict.reason };
+  if (verdict.kind === 'cooldown') return { cooldown: true };
+  if (verdict.kind !== 'ok') {
+    // the old links stay: an update never loses what the crawl had over one failure
+    if (verdict.kind === 'skip' || ++c.retries >= MAX_RETRIES) next();
+    return { wait: verdict.kind === 'skip' ? delay : delay * 2 };
+  }
+  for (const user of res.json.users || []) {
+    keepProfile(state, user);
+    if (user.username) c.found.push(user.username);
+  }
+  const more = res.json.next_max_id;
+  if (more && more !== c.cursor) {
+    c.cursor = more;
+    return { wait: delay };
+  }
+  const follower = state.followers[c.pk];
+  if (follower) {
+    const target = follower.username;
+    const before = new Set(state.links.filter(([, t]) => t === target).map(([source]) => source));
+    const after = new Set(c.found);
+    for (const source of before) if (!after.has(source)) record(state, '-', source, target);
+    for (const source of after) if (!before.has(source)) record(state, '+', source, target);
+    state.links = state.links.filter(([, t]) => t !== target);
+    for (const source of after) state.links.push([source, target]);
+    rebuildNodes(state);
+    follower.done = true;
+    follower.checkedAt = Date.now();
+  }
+  next();
+  return { wait: delay };
+}
+
+function finishListing(state) {
+  const u = state.update;
+  const me = state.viewer.username;
+  const seen = new Set(u.seen);
+  const known = Object.keys(state.followers);
+  const gone = known.filter((pk) => !seen.has(pk));
+  if (gone.length && seen.size >= known.length / 2) {
+    const names = new Set(gone.map((pk) => state.followers[pk].username));
+    // their  follower -> me  link and the "followed by" links into them; as someone the
+    // logged user follows they can still be in others' lists, and those links stay
+    const leaving = ([s, t]) => names.has(t) || (t === me && names.has(s));
+    const logged = new Set();
+    for (const [source, target] of state.links.filter(leaving)) {
+      if (logged.has(pairKey(source, target))) continue; // the first crawl can hold a link twice
+      logged.add(pairKey(source, target));
+      record(state, '-', source, target);
+    }
+    state.links = state.links.filter((link) => !leaving(link));
+    for (const pk of gone) delete state.followers[pk];
+    u.removed = gone.length;
+    rebuildNodes(state);
+  }
+  // order is the list as it is today; anyone kept above because the list came short goes last
+  state.order = [...u.seen, ...known.filter((pk) => !seen.has(pk) && state.followers[pk])];
+  const limit = state.settings.maxFollowers || Infinity;
+  const added = new Set(u.added);
+  const checkedAt = (pk) => state.followers[pk].checkedAt || 0;
+  const old = state.order.filter((pk) => !added.has(pk)).sort((a, b) => checkedAt(a) - checkedAt(b));
+  u.queue = [...u.added, ...old].slice(0, limit);
+  u.stage = 'mutuals';
+  u.paceBase = { activeMs: state.activeMs || 0, pos: 0 }; // the listing is not in the pace
+}
+
+// Instagram usernames change; the pk does not. Links and profile follow the new name.
+function renameAccount(state, from, to) {
+  if (from === to) return;
+  record(state, '~', from, to);
+  state.links = state.links.map(([s, t]) => [s === from ? to : s, t === from ? to : t]);
+  if (state.profiles?.[from] && !state.profiles[to]) state.profiles[to] = state.profiles[from];
+  rebuildNodes(state);
 }
 
 function nextPendingFollower(state) {
@@ -109,22 +307,7 @@ function nextPendingFollower(state) {
 export async function step(state, api) {
   const delay = state.settings.delaySec * 1000;
 
-  if (state.refresh) {
-    const res = await api.get(followersPath(state, state.refresh.cursor));
-    state.requests++;
-    const verdict = classify(res);
-    if (verdict.kind === 'fatal') return { fatal: verdict.reason };
-    if (verdict.kind === 'cooldown') return { cooldown: true };
-    if (verdict.kind !== 'ok') {
-      // optional pass: give up quietly rather than stop the crawl
-      if (++state.refresh.retries >= MAX_RETRIES) state.refresh = null;
-      return { wait: delay * 2 };
-    }
-    for (const user of res.json.users || []) keepProfile(state, user);
-    state.refresh = res.json.next_max_id ? { cursor: res.json.next_max_id, retries: 0 } : null;
-    if (!state.refresh && state.phase === 'done') return { done: true };
-    return { wait: delay };
-  }
+  if (state.update) return updateStep(state, api, delay);
 
   if (state.phase === 'followers') {
     const res = await api.get(followersPath(state, state.followersCursor));
@@ -158,10 +341,7 @@ export async function step(state, api) {
     }
     const { pk, cursor } = state.current;
     const target = state.followers[pk].username;
-    const params = new URLSearchParams();
-    if (cursor) params.set('max_id', cursor);
-    const qs = params.toString();
-    const res = await api.get(`/api/v1/friendships/${pk}/mutual_followers/${qs ? `?${qs}` : ''}`);
+    const res = await api.get(mutualsPath(pk, cursor));
     state.requests++;
     const verdict = classify(res);
     if (verdict.kind !== 'ok') {
@@ -192,6 +372,10 @@ function followersPath(state, cursor) {
   const params = new URLSearchParams({ count: '50', search_surface: 'follow_list_page' });
   if (cursor) params.set('max_id', cursor);
   return `/api/v1/friendships/${state.viewer.pk}/followers/?${params}`;
+}
+
+function mutualsPath(pk, cursor) {
+  return `/api/v1/friendships/${pk}/mutual_followers/${cursor ? `?max_id=${encodeURIComponent(cursor)}` : ''}`;
 }
 
 function handleNotOk(state, verdict, skipCurrent) {
@@ -266,6 +450,7 @@ export function tickClock(state, now = Date.now()) {
 }
 
 export function estimateRemaining(state) {
+  if (state.update) return estimateUpdate(state);
   const { done, total } = progress(state);
   const target = state.settings.maxFollowers ? Math.min(state.settings.maxFollowers, total) : total;
   const remaining = Math.max(0, target - done);
@@ -275,4 +460,21 @@ export function estimateRemaining(state) {
   if (sampled < MIN_SAMPLE) return { ms: floorMs, measured: false };
   const perFollower = ((state.activeMs || 0) - base.activeMs) / sampled;
   return { ms: Math.max(floorMs, remaining * perFollower), measured: true };
+}
+
+// Same idea for an update: its own pace once it has one, the crawl's before that, and
+// the floor when neither exists. The listing stage counts as one request per 50.
+function estimateUpdate(state) {
+  const u = state.update;
+  const delayMs = state.settings.delaySec * 1000;
+  const known = Object.keys(state.followers).length;
+  const listing = u.stage === 'followers';
+  const toList = listing ? Math.max(0, known - u.seen.length) : 0;
+  const remaining = listing ? Math.min(known, state.settings.maxFollowers || Infinity) : u.queue.length - u.pos;
+  const listMs = Math.ceil(toList / 50) * delayMs;
+  const floorMs = listMs + remaining * delayMs;
+  const sampled = u.paceBase ? u.pos - u.paceBase.pos : 0;
+  const pace = sampled >= MIN_SAMPLE ? ((state.activeMs || 0) - u.paceBase.activeMs) / sampled : u.priorPace;
+  if (!pace) return { ms: floorMs, measured: false };
+  return { ms: Math.max(floorMs, listMs + remaining * pace), measured: true };
 }
